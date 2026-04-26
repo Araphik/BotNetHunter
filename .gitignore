@@ -269,10 +269,6 @@ __pypackages__/
 *.gz
 *.rar
 
-############################
-# OPTIONAL (раскомментируй при необходимости)
-############################
-
-# vendor/
-# .idea/
-# .vscode/
+data/*.db
+data/*.db-shm
+data/*.db-wal
