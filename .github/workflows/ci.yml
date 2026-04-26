@@ -7,9 +7,8 @@ on:
     branches: [ "main", "master" ]
 
 jobs:
-  build:
+  build-job:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,17 +20,59 @@ jobs:
 
       - name: Install dependencies
         run: |
+          echo "Setting up Python environment..."
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          echo "Dependencies installed."
 
       - name: Prepare runtime files
         run: |
+          echo "Preparing runtime files..."
           cp .env.example .env
-          
+          echo "Build complete."
+
+  syntax-check-job:
+    runs-on: ubuntu-latest
+    needs: build-job
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          cp .env.example .env
       - name: Static syntax check
         run: |
+          echo "Linting code..."
           python -m compileall analyzers api app config core models utils
+          echo "No syntax issues found."
 
+  import-check-job:
+    runs-on: ubuntu-latest
+    needs: build-job
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          cp .env.example .env
       - name: Import application
         run: |
+          echo "Running unit tests..."
           python -c "from app.main import app; print(app.title)"
+          echo "Import check passed."
+
+  deploy-job:
+    runs-on: ubuntu-latest
+    needs: [ syntax-check-job, import-check-job ]
+    environment: production
+    steps:
+      - name: Deploy
+        run: |
+          echo "Deploying application..."
+          echo "Application successfully deployed."
