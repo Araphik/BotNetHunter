@@ -82,8 +82,8 @@ async def home(request: Request):
 async def login(request: Request, email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
     if is_admin_login(email, password):
         response = RedirectResponse(url="/admin", status_code=303)
-        response.set_cookie("admin_email", ADMIN_EMAIL, httponly=True, max_age=86400)
-        response.set_cookie("admin_token", "admin_session", httponly=True, max_age=86400)
+        response.set_cookie("admin_email", ADMIN_EMAIL, httponly=True, max_age=86400, secure=True, samesite="lax")
+        response.set_cookie("admin_token", "admin_session", httponly=True, max_age=86400, secure=True, samesite="lax")
         return response
     
     user = db.query(User).filter(User.email == email).first()
@@ -94,7 +94,7 @@ async def login(request: Request, email: str = Form(...), password: str = Form(.
     
     token = create_access_token(data={"sub": user.email})
     response = RedirectResponse(url="/dashboard", status_code=303)
-    response.set_cookie(key="token", value=token, httponly=True, max_age=86400)
+    response.set_cookie(key="token", value=token, httponly=True, max_age=86400, secure=True, samesite="lax")
     return response
 
 
@@ -112,7 +112,7 @@ async def register(request: Request, email: str = Form(...), password: str = For
     db.commit()
     token = create_access_token(data={"sub": new_user.email})
     response = RedirectResponse(url="/dashboard", status_code=303)
-    response.set_cookie(key="token", value=token, httponly=True, max_age=86400)
+    response.set_cookie(key="token", value=token, httponly=True, max_age=86400, secure=True, samesite="lax")
     return response
 
 
