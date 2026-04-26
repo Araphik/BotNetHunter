@@ -1,0 +1,5 @@
+body { background-color: #f8f9fa; }
+.card { border: none; border-radius: 10px; }
+.card-header { border-radius: 10px 10px 0 0 !important; }
+.badge { font-size: 0.9em; padding: 0.5em 0.8em; }
+.navbar-brand { font-weight: bold; letter-spacing: 1px; }
