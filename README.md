@@ -264,6 +264,7 @@ DATABASE_URL=postgresql+psycopg://botnethunter:botnethunter@localhost:5432/botne
 POSTGRES_DB=botnethunter
 POSTGRES_USER=botnethunter
 POSTGRES_PASSWORD=botnethunter
+SECURITY_ALLOWED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000
 ```
 
 `SECRET_KEY` можно сгенерировать командой:
@@ -307,6 +308,20 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```text
 http://127.0.0.1:8000
 ```
+
+### Security headers и CORS
+
+Приложение добавляет защитные HTTP-заголовки через middleware:
+
+- `Content-Security-Policy`;
+- `X-Content-Type-Options: nosniff`;
+- `X-Frame-Options: DENY`;
+- `Referrer-Policy`;
+- `Permissions-Policy`;
+- `Cross-Origin-Opener-Policy`;
+- `Cross-Origin-Resource-Policy`.
+
+CORS включён только для origin из переменной `SECURITY_ALLOWED_ORIGINS`. Значение задаётся списком через запятую, без wildcard `*`.
 
 ## 4 Требования к аппаратному обеспечению
 

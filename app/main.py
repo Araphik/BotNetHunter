@@ -3,6 +3,7 @@ import json
 import asyncio
 import uuid
 from fastapi import FastAPI, Request, Depends, Form
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -19,7 +20,7 @@ from app.auth import (
 )
 from config.settings import BASE_DIR, APP_VERSION
 from config.weights import DEFAULT_REQUESTS_LIMIT, DEFAULT_MODULE_WEIGHTS
-from config.settings import ADMIN_EMAIL, ADMIN_PASSWORD
+from config.settings import ADMIN_EMAIL, ADMIN_PASSWORD, SECURITY_ALLOWED_ORIGINS
 from core.token_manager import TokenManager
 from api.endpoints import analyze_user, analyze_group
 from config.settings import get_app_version
@@ -28,6 +29,13 @@ from config.settings import get_app_version
 app = FastAPI(title="BotNetHunter")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=SECURITY_ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
+)
 
 
 MAX_REQUEST_BODY_SIZE = 1 * 1024 * 1024
@@ -37,6 +45,27 @@ SUPPORTED_REQUEST_MEDIA_TYPES = {
     "multipart/form-data",
 }
 BODY_METHODS = {"POST", "PUT", "PATCH"}
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "img-src 'self' data:; "
+        "font-src 'self' data: https://cdn.jsdelivr.net; "
+        "connect-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "X-Permitted-Cross-Domain-Policies": "none",
+}
 
 
 def problem_response(status_code: int, title: str, detail: str) -> JSONResponse:
@@ -119,6 +148,17 @@ async def validate_request_body(request: Request, call_next):
                     )
 
     return await call_next(request)
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for header, value in SECURITY_HEADERS.items():
+        if header not in response.headers:
+            response.headers[header] = value
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 
 @app.middleware("http")

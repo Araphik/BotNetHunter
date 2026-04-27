@@ -44,6 +44,14 @@ DATABASE_URL = os.getenv(
     'DATABASE_URL',
     'postgresql+psycopg://botnethunter:botnethunter@localhost:5432/botnethunter'
 )
+SECURITY_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "SECURITY_ALLOWED_ORIGINS",
+        "http://127.0.0.1:8000,http://localhost:8000"
+    ).split(",")
+    if origin.strip()
+]
 
 # Admin credentials
 ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
