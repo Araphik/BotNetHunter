@@ -2,14 +2,28 @@ openapi: 3.1.0
 
 info:
   title: BotNetHunter API
-  version: 1.0.0
+  version: 2.0.0
   description: |
     API системы выявления ботов в социальной сети ВКонтакте.
+
+    ## Изменения в версии 2.0.0
+    - СУБД заменена с SQLite на **PostgreSQL 16** (через psycopg3, SQLAlchemy 2.0).
+    - VK API-токены перенесены из файла `tokens.txt` в переменные окружения `VK_TOKEN_1`, `VK_TOKEN_2`, ...
+    - Учётные данные администратора перенесены в переменные окружения `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+    - Добавлен Nginx как обратный прокси (порты 80/443).
+    - Middleware теперь дополнительно принимает `application/x-www-form-urlencoded` и `multipart/form-data`.
+    - Добавлены эндпоинты: смена пароля, сброс весов, параметры модулей, глобальный лимит, `/health`, `/api/version`.
 
     ## Аутентификация
     После успешного входа сервер выставляет **HttpOnly cookie** `token` (JWT HS256, TTL 24 ч).
     Все защищённые эндпоинты требуют наличия этой cookie.
     Административные эндпоинты дополнительно требуют cookie `admin_token=admin_session`.
+
+    ## Поддерживаемые типы содержимого запроса (Content-Type)
+    Для эндпоинтов с телом запроса сервер принимает:
+    - `application/json`
+    - `application/x-www-form-urlencoded`
+    - `multipart/form-data`
 
     ## Структура ошибок
     Все ответы 4xx / 5xx возвращают JSON-тело с Content-Type `application/problem+json`
@@ -23,7 +37,9 @@ info:
 
 servers:
   - url: http://localhost:8000
-    description: Локальная разработка
+    description: Локальная разработка (без Nginx, напрямую к Uvicorn)
+  - url: http://localhost:80
+    description: Docker Compose (через Nginx, порт 80)
 
 tags:
   - name: auth
@@ -36,6 +52,8 @@ tags:
     description: Управление собственным аккаунтом
   - name: admin
     description: Административная панель
+  - name: system
+    description: Служебные эндпоинты (health-check, версия)
 
 # ─────────────────────────────────────────────────────────────────────────────
 paths:
@@ -375,7 +393,7 @@ paths:
                 $ref: '#/components/schemas/ProblemDetail'
               example:
                 title: VK API недоступен
-                detail: Файл tokens.txt пуст или все токены исчерпаны. Обратитесь к администратору системы для добавления действующих токенов.
+                detail: Ни один из токенов VK API (VK_TOKEN_1 ... VK_TOKEN_N) не задан или все недействительны. Обратитесь к администратору системы для обновления переменных окружения.
                 requestId: 0191f3a2-1c4b-7e00-a1b2-3c4d5e6f7898
                 timestamp: "2026-04-26T10:05:33Z"
         '504':
@@ -870,6 +888,371 @@ paths:
         '501':
           $ref: '#/components/responses/NotImplemented'
 
+  /admin/weights/reset:
+    get:
+      tags: [admin]
+      summary: Сбросить веса модулей на значения по умолчанию
+      operationId: adminResetWeights
+      description: |
+        Удаляет все записи весов из таблицы `admin_settings` (ключи с префиксом `weight_`).
+        После сброса система использует значения по умолчанию из `config/weights.py`.
+      security:
+        - adminCookieAuth: []
+      responses:
+        '200':
+          description: Веса сброшены на значения по умолчанию
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+              example:
+                message: Веса аналитических модулей сброшены на значения по умолчанию.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '418':
+          $ref: '#/components/responses/Teapot'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /admin/weights/parameters:
+    get:
+      tags: [admin]
+      summary: Получить параметры аналитических модулей
+      operationId: adminGetParameters
+      description: |
+        Возвращает детальные параметры (штрафные баллы) всех четырёх аналитических модулей.
+        Если параметр не переопределён в БД, возвращается значение по умолчанию из `config/weights.py`.
+      security:
+        - adminCookieAuth: []
+      responses:
+        '200':
+          description: Параметры всех модулей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModuleParameters'
+              example:
+                profile_analyzer:
+                  global_weight: 1.0
+                  parameters:
+                    no_avatar_penalty:
+                      value: 18
+                      description: Штраф за отсутствие аватарки
+                    new_account_penalty:
+                      value: 12
+                      description: Штраф за новый аккаунт
+                social_graph_analyzer:
+                  global_weight: 1.2
+                  parameters:
+                    foreign_friends_ratio_threshold:
+                      value: 70
+                      description: Порог доли иностранных друзей (%)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '418':
+          $ref: '#/components/responses/Teapot'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /admin/weights/parameters/save:
+    post:
+      tags: [admin]
+      summary: Сохранить параметры аналитических модулей
+      operationId: adminSaveParameters
+      description: |
+        Обновляет или создаёт записи параметров в таблице `module_parameters`.
+        Ключ параметра — уникальная пара `(module_name, param_key)`.
+        Изменения применяются немедленно ко всем последующим запросам анализа.
+      security:
+        - adminCookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModuleParameters'
+            example:
+              profile_analyzer:
+                global_weight: 1.0
+                parameters:
+                  no_avatar_penalty:
+                    value: 20
+                    description: Штраф за отсутствие аватарки
+      responses:
+        '200':
+          description: Параметры модулей успешно сохранены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+              example:
+                message: Параметры аналитических модулей обновлены.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '418':
+          $ref: '#/components/responses/Teapot'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /admin/weights/parameters/reset:
+    get:
+      tags: [admin]
+      summary: Сбросить параметры модулей на значения по умолчанию
+      operationId: adminResetParameters
+      description: |
+        Удаляет все записи из таблицы `module_parameters`.
+        После сброса система использует значения по умолчанию из `config/weights.py`.
+      security:
+        - adminCookieAuth: []
+      responses:
+        '200':
+          description: Параметры сброшены на значения по умолчанию
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+              example:
+                message: Параметры аналитических модулей сброшены на значения по умолчанию.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '418':
+          $ref: '#/components/responses/Teapot'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /admin/settings/global_limit:
+    post:
+      tags: [admin]
+      summary: Установить глобальный лимит запросов для всех пользователей
+      operationId: adminSetGlobalLimit
+      description: |
+        Сохраняет значение `global_requests_limit` в таблице `admin_settings`.
+        Этот лимит является верхней границей при создании новых аккаунтов.
+        Уже существующие пользователи сохраняют свои индивидуальные лимиты
+        до их ручного изменения через `POST /admin/users/{userId}/limit`.
+      security:
+        - adminCookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [global_limit]
+              properties:
+                global_limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 100000
+                  description: |
+                    Новый глобальный дневной лимит запросов. **Обязательное поле.**
+                    Допустимые значения: от 1 до 100 000.
+                  example: 200
+            example:
+              global_limit: 200
+      responses:
+        '200':
+          description: Глобальный лимит успешно обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+              example:
+                message: Глобальный лимит запросов установлен на 200.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '418':
+          $ref: '#/components/responses/Teapot'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  # ── ACCOUNT EXTENDED ──────────────────────────────────────────────────────
+
+  /account/change-password:
+    post:
+      tags: [account]
+      summary: Изменить пароль текущего пользователя
+      operationId: changePassword
+      description: |
+        Меняет пароль аутентифицированного пользователя.
+
+        Требования к новому паролю:
+        - Минимальная длина: **8 символов**.
+        - Должен отличаться от текущего пароля.
+        - Поля `new_password` и `confirm_password` должны совпадать.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+            example:
+              current_password: OldPass123
+              new_password: NewStr0ngPass!
+              confirm_password: NewStr0ngPass!
+      responses:
+        '200':
+          description: Пароль успешно изменён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+              example:
+                message: Пароль успешно изменён.
+        '400':
+          description: Ошибка валидации нового пароля
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+              examples:
+                wrong_current:
+                  summary: Неверный текущий пароль
+                  value:
+                    title: Неверный пароль
+                    detail: Текущий пароль указан неверно. Проверьте введённые данные.
+                    requestId: 0191f3a2-1c4b-7e00-a1b2-3c4d5e6f78b0
+                    timestamp: "2026-04-26T10:20:00Z"
+                too_short:
+                  summary: Новый пароль слишком короткий
+                  value:
+                    title: Слишком короткий пароль
+                    detail: Новый пароль должен содержать не менее 8 символов.
+                    requestId: 0191f3a2-1c4b-7e00-a1b2-3c4d5e6f78b1
+                    timestamp: "2026-04-26T10:20:01Z"
+                mismatch:
+                  summary: Пароли не совпадают
+                  value:
+                    title: Пароли не совпадают
+                    detail: Новый пароль и подтверждение не совпадают. Введите оба поля одинаково.
+                    requestId: 0191f3a2-1c4b-7e00-a1b2-3c4d5e6f78b2
+                    timestamp: "2026-04-26T10:20:02Z"
+                same_password:
+                  summary: Совпадает с текущим
+                  value:
+                    title: Пароль не изменён
+                    detail: Новый пароль должен отличаться от текущего.
+                    requestId: 0191f3a2-1c4b-7e00-a1b2-3c4d5e6f78b3
+                    timestamp: "2026-04-26T10:20:03Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '418':
+          $ref: '#/components/responses/Teapot'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  # ── SYSTEM ────────────────────────────────────────────────────────────────
+
+  /health:
+    get:
+      tags: [system]
+      summary: Проверка работоспособности сервиса
+      operationId: healthCheck
+      description: |
+        Возвращает текущий статус приложения и версию.
+        Используется Docker Compose (`healthcheck`) и системами мониторинга.
+        Не требует аутентификации.
+      responses:
+        '200':
+          description: Сервис работает нормально
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                version: "2.0.0"
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: Сервис временно недоступен (БД или зависимости не отвечают)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+              example:
+                title: Сервис недоступен
+                detail: Приложение запущено, но одна из зависимостей (PostgreSQL) не отвечает. Повторите запрос через несколько секунд.
+                requestId: 0191f3a2-1c4b-7e00-a1b2-3c4d5e6f78c0
+                timestamp: "2026-04-26T10:30:00Z"
+
+  /api/version:
+    get:
+      tags: [system]
+      summary: Получить версию приложения и VK API
+      operationId: getVersion
+      description: |
+        Возвращает версию приложения, версию VK API и номер сборки.
+        Предназначен для скриптов автоматизации и CI/CD пайплайнов.
+        Не требует аутентификации.
+      responses:
+        '200':
+          description: Информация о версии
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
+              example:
+                version: "2.0.0"
+                api_version: "v5.131"
+                build: "42"
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
 # ─────────────────────────────────────────────────────────────────────────────
 components:
 
@@ -1224,6 +1607,107 @@ components:
             Допустимые значения: от 0.1 до 5.0.
           example: 1.1
 
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password, confirm_password]
+      description: Запрос на смену пароля
+      properties:
+        current_password:
+          type: string
+          description: Текущий пароль пользователя. **Обязательное поле.**
+          example: OldPass123
+        new_password:
+          type: string
+          minLength: 8
+          description: |
+            Новый пароль. **Обязательное поле.**
+            Минимальная длина — 8 символов. Должен отличаться от текущего пароля.
+          example: NewStr0ngPass!
+        confirm_password:
+          type: string
+          minLength: 8
+          description: Подтверждение нового пароля. **Обязательное поле.** Должно совпадать с `new_password`.
+          example: NewStr0ngPass!
+
+    HealthResponse:
+      type: object
+      description: Ответ эндпоинта проверки работоспособности
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+          description: Текущий статус приложения.
+          example: ok
+        version:
+          type: string
+          description: Текущая версия приложения (из файла `VERSION` или переменной `APP_VERSION`).
+          example: "2.0.0"
+
+    VersionResponse:
+      type: object
+      description: Информация о версии приложения и VK API
+      required: [version, api_version, build]
+      properties:
+        version:
+          type: string
+          description: Версия приложения.
+          example: "2.0.0"
+        api_version:
+          type: string
+          description: Используемая версия VK API (с префиксом `v`).
+          example: "v5.131"
+        build:
+          type: string
+          description: Номер сборки из переменной окружения `BUILD_NUMBER`. Значение `local` при локальном запуске.
+          example: "42"
+
+    ModuleParameterItem:
+      type: object
+      description: Один параметр аналитического модуля
+      required: [value]
+      properties:
+        value:
+          type: integer
+          description: Текущее значение параметра (штрафные баллы или порог).
+          example: 18
+        description:
+          type: string
+          description: Человекочитаемое описание параметра.
+          example: Штраф за отсутствие аватарки
+
+    ModuleConfig:
+      type: object
+      description: Конфигурация одного аналитического модуля
+      required: [global_weight, parameters]
+      properties:
+        global_weight:
+          type: number
+          format: float
+          minimum: 0.1
+          maximum: 5.0
+          description: Глобальный коэффициент модуля.
+          example: 1.0
+        parameters:
+          type: object
+          description: Словарь параметров модуля (ключ — имя параметра).
+          additionalProperties:
+            $ref: '#/components/schemas/ModuleParameterItem'
+
+    ModuleParameters:
+      type: object
+      description: Параметры всех четырёх аналитических модулей
+      required: [profile_analyzer, social_graph_analyzer, behavior_analyzer, cross_check_analyzer]
+      properties:
+        profile_analyzer:
+          $ref: '#/components/schemas/ModuleConfig'
+        social_graph_analyzer:
+          $ref: '#/components/schemas/ModuleConfig'
+        behavior_analyzer:
+          $ref: '#/components/schemas/ModuleConfig'
+        cross_check_analyzer:
+          $ref: '#/components/schemas/ModuleConfig'
+
   # ── REUSABLE RESPONSES ─────────────────────────────────────────────────────
 
   responses:
@@ -1330,14 +1814,22 @@ components:
             timestamp: "2026-04-26T10:00:00Z"
 
     UnsupportedMediaType:
+<<<<<<< HEAD
       description: "415 — Content-Type запроса не поддерживается"
+=======
+      description: "415 — Content-Type запроса не поддерживается. Сервер принимает: application/json, application/x-www-form-urlencoded, multipart/form-data"
+>>>>>>> b4dc866 (Обновленный swagger.yaml)
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
           example:
             title: Неподдерживаемый тип данных
+<<<<<<< HEAD
             detail: "Сервер принимает application/json, application/x-www-form-urlencoded или multipart/form-data. Укажите корректный Content-Type и повторите запрос."
+=======
+            detail: "Сервер принимает только: application/json, application/x-www-form-urlencoded или multipart/form-data. Укажите корректный заголовок Content-Type и повторите запрос."
+>>>>>>> b4dc866 (Обновленный swagger.yaml)
             requestId: 0191f3a2-1c4b-7e00-a1b2-3c4d5e6f78a8
             timestamp: "2026-04-26T10:00:00Z"
 
