@@ -198,7 +198,10 @@
                         </p>
                     </div>
                     <div class="col-md-4 text-md-end mt-3 mt-md-0">
-                        <form method="post" action="/account/delete" onsubmit="return confirm('Вы уверены? Все данные будут удалены без возможности восстановления.');">
+                        <a href="/account/change-password" class="btn btn-outline-primary btn-sm me-2">
+                            Сменить пароль
+                        </a>
+                        <form method="post" action="/account/delete" class="d-inline" onsubmit="return confirm('Вы уверены? Все данные будут удалены без возможности восстановления.');">
                             <button type="submit" class="btn btn-outline-danger btn-sm">
                                 Удалить аккаунт
                             </button>

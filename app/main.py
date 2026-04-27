@@ -74,7 +74,13 @@ async def add_version_to_templates(request: Request, call_next):
 # АВТОРИЗАЦИЯ 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    return templates.TemplateResponse(request, "login.html")
+    success = None
+    if request.query_params.get("password_changed") == "1":
+        success = "Пароль успешно изменён. Войдите с новым паролем."
+    return templates.TemplateResponse(request, "login.html", {
+        "request": request,
+        "success": success,
+    })
 
 
 @app.post("/login")
@@ -123,6 +129,72 @@ async def logout():
     response.delete_cookie("admin_token")
     return response
 
+
+@app.get("/account/change-password", response_class=HTMLResponse)
+async def change_password_page(request: Request, db: Session = Depends(get_db)):
+    user = get_user_from_cookie(request, db)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
+
+    return templates.TemplateResponse(request, "change_password.html", {
+        "request": request,
+        "user": user,
+        "error": None,
+        "success": None,
+    })
+
+
+@app.post("/account/change-password", response_class=HTMLResponse)
+async def change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = get_user_from_cookie(request, db)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
+
+    if not verify_password(current_password, user.hashed_password):
+        return templates.TemplateResponse(request, "change_password.html", {
+            "request": request,
+            "user": user,
+            "error": "Текущий пароль указан неверно",
+            "success": None,
+        })
+
+    if len(new_password) < 8:
+        return templates.TemplateResponse(request, "change_password.html", {
+            "request": request,
+            "user": user,
+            "error": "Новый пароль должен быть не короче 8 символов",
+            "success": None,
+        })
+
+    if new_password != confirm_password:
+        return templates.TemplateResponse(request, "change_password.html", {
+            "request": request,
+            "user": user,
+            "error": "Новый пароль и подтверждение не совпадают",
+            "success": None,
+        })
+
+    if verify_password(new_password, user.hashed_password):
+        return templates.TemplateResponse(request, "change_password.html", {
+            "request": request,
+            "user": user,
+            "error": "Новый пароль должен отличаться от текущего",
+            "success": None,
+        })
+
+    user.hashed_password = get_password_hash(new_password)
+    db.add(user)
+    db.commit()
+
+    response = RedirectResponse(url="/?password_changed=1", status_code=303)
+    response.delete_cookie("token")
+    return response
 
 # ПОЛЬЗОВАТЕЛЬСКИЙ ИНТЕРФЕЙС 
 @app.get("/dashboard", response_class=HTMLResponse)
