@@ -723,6 +723,14 @@ async def get_version_api():
         "api_version": f"v{VK_API_VERSION}",
         "build": os.getenv("BUILD_NUMBER", "local")
     }
+
+
+@app.get("/health", response_class=JSONResponse, include_in_schema=False)
+async def health_check():
+    return {
+        "status": "ok",
+        "version": get_app_version(),
+    }
     
 @app.on_event("startup")
 async def startup_event():

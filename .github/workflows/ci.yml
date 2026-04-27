@@ -95,9 +95,51 @@ jobs:
           python -c "from app.main import app; print(app.title)"
           echo "Import check passed."
 
-  deploy-job:
+  package-job:
     runs-on: ubuntu-latest
     needs: [ syntax-check-job, import-check-job ]
+    env:
+      IMAGE_NAME: botnethunter
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read application version
+        run: echo "APP_VERSION=$(cat VERSION)" >> "$GITHUB_ENV"
+
+      - name: Prepare runtime files
+        run: cp .env.example .env
+
+      - name: Validate Docker Compose configuration
+        run: docker compose config
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --tag "${IMAGE_NAME}:${APP_VERSION}" \
+            --tag "${IMAGE_NAME}:ci" \
+            .
+
+      - name: Build distributive artifacts
+        run: |
+          mkdir -p dist
+          git archive \
+            --format=zip \
+            --output "dist/${IMAGE_NAME}-${APP_VERSION}-source.zip" \
+            HEAD
+          docker save "${IMAGE_NAME}:${APP_VERSION}" \
+            | gzip > "dist/${IMAGE_NAME}-${APP_VERSION}-docker-image.tar.gz"
+          sha256sum dist/* > dist/SHA256SUMS
+
+      - name: Upload distributive artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: botnethunter-distributive-${{ env.APP_VERSION }}
+          path: dist/
+          if-no-files-found: error
+
+  deploy-job:
+    runs-on: ubuntu-latest
+    needs: [ package-job ]
     environment: production
     steps:
       - name: Deploy
