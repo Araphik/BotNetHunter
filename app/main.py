@@ -1,9 +1,7 @@
 import os
 import json
 import asyncio
-import uuid
 from fastapi import FastAPI, Request, Depends, Form
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -14,78 +12,22 @@ from datetime import datetime, timezone, timedelta
 
 
 from app.database import get_db, engine, Base, SessionLocal
-from app.models import User, AnalysisHistory, AdminSettings, ModuleParameter
+from app.models import User, AnalysisHistory, AdminSettings, ModuleParameter, VKToken
 from app.auth import (
     get_password_hash, verify_password, create_access_token, decode_token, is_admin_login
 )
 from config.settings import BASE_DIR, APP_VERSION
 from config.weights import DEFAULT_REQUESTS_LIMIT, DEFAULT_MODULE_WEIGHTS
-from config.settings import ADMIN_EMAIL, ADMIN_PASSWORD, SECURITY_ALLOWED_ORIGINS
+from config.settings import ADMIN_EMAIL, ADMIN_PASSWORD
 from core.token_manager import TokenManager
 from api.endpoints import analyze_user, analyze_group
 from config.settings import get_app_version
 
 # ИНИЦИАЛИЗАЦИЯ
 app = FastAPI(title="BotNetHunter")
+Base.metadata.create_all(bind=engine)
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=SECURITY_ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "Authorization"],
-)
-
-
-MAX_REQUEST_BODY_SIZE = 1 * 1024 * 1024
-SUPPORTED_REQUEST_MEDIA_TYPES = {
-    "application/json",
-    "application/x-www-form-urlencoded",
-    "multipart/form-data",
-}
-BODY_METHODS = {"POST", "PUT", "PATCH"}
-SECURITY_HEADERS = {
-    "Content-Security-Policy": (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-        "img-src 'self' data:; "
-        "font-src 'self' data: https://cdn.jsdelivr.net; "
-        "connect-src 'self'; "
-        "object-src 'none'; "
-        "base-uri 'self'; "
-        "form-action 'self'; "
-        "frame-ancestors 'none'"
-    ),
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
-    "Cross-Origin-Opener-Policy": "same-origin",
-    "Cross-Origin-Resource-Policy": "same-origin",
-    "X-Permitted-Cross-Domain-Policies": "none",
-}
-
-
-def problem_response(status_code: int, title: str, detail: str) -> JSONResponse:
-    return JSONResponse(
-        status_code=status_code,
-        content={
-            "title": title,
-            "detail": detail,
-            "requestId": str(uuid.uuid4()),
-            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        },
-        media_type="application/problem+json",
-    )
-
-
-def normalize_media_type(content_type: str | None) -> str:
-    if not content_type:
-        return ""
-    return content_type.split(";", 1)[0].strip().lower()
-
 
 
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ 
@@ -122,48 +64,7 @@ def get_param_value(module_name: str, param_key: str, default: int) -> int:
 
 
 @app.middleware("http")
-async def validate_request_body(request: Request, call_next):
-    if request.method in BODY_METHODS:
-        content_length = request.headers.get("content-length")
-        if content_length:
-            try:
-                body_size = int(content_length)
-            except ValueError:
-                body_size = 0
-
-            if body_size > MAX_REQUEST_BODY_SIZE:
-                return problem_response(
-                    413,
-                    "Тело запроса слишком велико",
-                    "Размер тела запроса превышает допустимый предел в 1 МБ. Уменьшите объём передаваемых данных.",
-                )
-
-            if body_size > 0:
-                media_type = normalize_media_type(request.headers.get("content-type"))
-                if media_type not in SUPPORTED_REQUEST_MEDIA_TYPES:
-                    return problem_response(
-                        415,
-                        "Неподдерживаемый тип данных",
-                        "Сервер принимает application/json, application/x-www-form-urlencoded или multipart/form-data. Укажите корректный Content-Type и повторите запрос.",
-                    )
-
-    return await call_next(request)
-
-
-@app.middleware("http")
-async def add_security_headers(request: Request, call_next):
-    response = await call_next(request)
-    for header, value in SECURITY_HEADERS.items():
-        if header not in response.headers:
-            response.headers[header] = value
-    if request.url.scheme == "https":
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    return response
-
-
-@app.middleware("http")
 async def add_version_to_templates(request: Request, call_next):
-    """Добавляет версию в каждый запрос"""
     request.state.app_version = get_app_version()
     response = await call_next(request)
     return response
@@ -171,13 +72,7 @@ async def add_version_to_templates(request: Request, call_next):
 # АВТОРИЗАЦИЯ 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    success = None
-    if request.query_params.get("password_changed") == "1":
-        success = "Пароль успешно изменён. Войдите с новым паролем."
-    return templates.TemplateResponse(request, "login.html", {
-        "request": request,
-        "success": success,
-    })
+    return templates.TemplateResponse(request, "login.html")
 
 
 @app.post("/login")
@@ -227,72 +122,6 @@ async def logout():
     return response
 
 
-@app.get("/account/change-password", response_class=HTMLResponse)
-async def change_password_page(request: Request, db: Session = Depends(get_db)):
-    user = get_user_from_cookie(request, db)
-    if not user:
-        return RedirectResponse(url="/", status_code=303)
-
-    return templates.TemplateResponse(request, "change_password.html", {
-        "request": request,
-        "user": user,
-        "error": None,
-        "success": None,
-    })
-
-
-@app.post("/account/change-password", response_class=HTMLResponse)
-async def change_password(
-    request: Request,
-    current_password: str = Form(...),
-    new_password: str = Form(...),
-    confirm_password: str = Form(...),
-    db: Session = Depends(get_db),
-):
-    user = get_user_from_cookie(request, db)
-    if not user:
-        return RedirectResponse(url="/", status_code=303)
-
-    if not verify_password(current_password, user.hashed_password):
-        return templates.TemplateResponse(request, "change_password.html", {
-            "request": request,
-            "user": user,
-            "error": "Текущий пароль указан неверно",
-            "success": None,
-        })
-
-    if len(new_password) < 8:
-        return templates.TemplateResponse(request, "change_password.html", {
-            "request": request,
-            "user": user,
-            "error": "Новый пароль должен быть не короче 8 символов",
-            "success": None,
-        })
-
-    if new_password != confirm_password:
-        return templates.TemplateResponse(request, "change_password.html", {
-            "request": request,
-            "user": user,
-            "error": "Новый пароль и подтверждение не совпадают",
-            "success": None,
-        })
-
-    if verify_password(new_password, user.hashed_password):
-        return templates.TemplateResponse(request, "change_password.html", {
-            "request": request,
-            "user": user,
-            "error": "Новый пароль должен отличаться от текущего",
-            "success": None,
-        })
-
-    user.hashed_password = get_password_hash(new_password)
-    db.add(user)
-    db.commit()
-
-    response = RedirectResponse(url="/?password_changed=1", status_code=303)
-    response.delete_cookie("token")
-    return response
-
 # ПОЛЬЗОВАТЕЛЬСКИЙ ИНТЕРФЕЙС 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request, db: Session = Depends(get_db)):
@@ -304,13 +133,21 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     history = db.query(AnalysisHistory).filter(AnalysisHistory.user_id == user.id).order_by(AnalysisHistory.created_at.desc()).limit(50).all()
     progress_percent = min(user.requests_today / max(user.requests_limit, 1) * 100, 100)
     requests_left = max(user.requests_limit - user.requests_today, 0)
-    return templates.TemplateResponse(request, "dashboard.html", {
+    
+    response = templates.TemplateResponse(request, "dashboard.html", {
         "request": request, "user": user, "history": history, "error": None,
         "progress_percent": progress_percent, "requests_left": requests_left,
     })
+    
+    response.headers["X-RateLimit-Limit"] = str(user.requests_limit)
+    response.headers["X-RateLimit-Remaining"] = str(requests_left)
+    response.headers["X-RateLimit-Reset"] = str(int((datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).timestamp()))
+    
+    return response
+    
+
 @app.post("/analyze")
 async def analyze(request: Request, target: str = Form(...), target_type: str = Form("user"), db: Session = Depends(get_db)):
-    # Проверка админа
     if get_admin_from_cookie(request):
         user = None
     else:
@@ -325,22 +162,27 @@ async def analyze(request: Request, target: str = Form(...), target_type: str = 
         
         if user.requests_today >= user.requests_limit:
             history = db.query(AnalysisHistory).filter(AnalysisHistory.user_id == user.id).order_by(AnalysisHistory.created_at.desc()).limit(50).all()
-            return templates.TemplateResponse(request, "dashboard.html", {
+            response = templates.TemplateResponse(request, "dashboard.html", {
                 "request": request, "user": user, "history": history,
                 "error": f"Лимит исчерпан ({user.requests_today}/{user.requests_limit}).",
                 "progress_percent": 100, "requests_left": 0,
             })
+            response.status_code = 429
+            response.headers["Retry-After"] = "86400"
+            response.headers["X-RateLimit-Limit"] = str(user.requests_limit)
+            response.headers["X-RateLimit-Remaining"] = "0"
+            response.headers["X-RateLimit-Reset"] = str(int((today + timedelta(days=1)).timestamp()))
+            return response
 
-    tm = TokenManager()
-    if not tm.tokens:
+    tm = TokenManager(db)
+    if not tm.get_tokens_count():
         return templates.TemplateResponse(request, "dashboard.html", {
             "request": request, "user": user, "history": [],
-            "error": "Ошибка: VK токены не заданы. Добавьте VK_TOKEN_1 (и т.д.) в .env.",
+            "error": "Ошибка: Сервис временно недоступен",
             "progress_percent": 0, "requests_left": max(user.requests_limit - user.requests_today, 0) if user else 0,
         })
 
     if target_type == "group":
-        # АНАЛИЗ ГРУППЫ
         if user:
             remaining_limit = user.requests_limit - user.requests_today
         else:
@@ -373,7 +215,6 @@ async def analyze(request: Request, target: str = Form(...), target_type: str = 
         )
 
     else:
-        # АНАЛИЗ ПРОФИЛЯ
         result = analyze_user(target, tm)
         if not result:
             return templates.TemplateResponse(request, "dashboard.html", {
@@ -436,7 +277,7 @@ async def delete_account(request: Request, db: Session = Depends(get_db)):
     return response
 
 
-# === АДМИН-ПАНЕЛЬ ===
+# АДМИН-ПАНЕЛЬ 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     if not get_admin_from_cookie(request):
@@ -448,7 +289,7 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
         "total_requests": db.query(AnalysisHistory).count(),
         "avg_risk_score": int(db.query(func.avg(AnalysisHistory.score)).scalar() or 0),
         "api_load": 0,
-        "active_tokens": len(TokenManager().tokens),
+        "active_tokens": TokenManager(db).get_tokens_count(),
     }
     recent = db.query(AnalysisHistory, User.email).join(User).order_by(AnalysisHistory.created_at.desc()).limit(10).all()
     recent_activities = [{"created_at": h.created_at, "user_email": email, "action": "analyze", "target": h.target, "risk_level": h.risk_level} for h, email in recent]
@@ -641,7 +482,6 @@ async def admin_metrics(request: Request, db: Session = Depends(get_db)):
     
     from sqlalchemy import func, text
     
-    # конвертируем UTC в локальное время UTC+3
     hourly_stats = db.query(
         func.strftime('%H', func.datetime(AnalysisHistory.created_at, '+3 hours')).label('hour'),
         func.count(AnalysisHistory.id).label('count')
@@ -649,13 +489,10 @@ async def admin_metrics(request: Request, db: Session = Depends(get_db)):
         AnalysisHistory.created_at >= datetime.utcnow() - timedelta(hours=24)
     ).group_by('hour').order_by('hour').all()
     
-    # Заполняем все 24 часа
     activity_hours = [f"{h:02d}:00" for h in range(24)]
     activity_map = {row.hour.zfill(2): row.count for row in hourly_stats if row.hour}
     activity_values = [activity_map.get(f"{h:02d}", 0) for h in range(24)]
 
-    
-    # Получение последних записей истории
     history_records = db.query(AnalysisHistory).order_by(
         AnalysisHistory.created_at.desc()
     ).limit(10).all()
@@ -666,7 +503,7 @@ async def admin_metrics(request: Request, db: Session = Depends(get_db)):
         "cpu_percent": round(current.get("cpu_percent", 0), 1),
         "memory_percent": round(current.get("memory_percent", 0), 1),
         "disk_percent": round(current.get("disk_percent", 0), 1),
-        "active_tokens": len(TokenManager().tokens),
+        "active_tokens": TokenManager(db).get_tokens_count(),
         "api_requests_per_min": history.get("api_requests_per_min", 0),
         "api_errors": history.get("api_errors", 0),
         "api_avg_response_ms": 0,
@@ -691,7 +528,73 @@ async def admin_metrics(request: Request, db: Session = Depends(get_db)):
             "history_records": history_records,
         }
     )
+
+
+# УПРАВЛЕНИЕ VK ТОКЕНАМИ 
+@app.get("/admin/tokens", response_class=HTMLResponse)
+async def admin_tokens(request: Request, db: Session = Depends(get_db)):
+    if not get_admin_from_cookie(request):
+        return RedirectResponse(url="/", status_code=303)
     
+    tokens = db.query(VKToken).order_by(VKToken.created_at.desc()).all()
+    return templates.TemplateResponse(request, "admin_tokens.html", {
+        "request": request,
+        "tokens": tokens,
+        "active_count": sum(1 for t in tokens if t.is_active)
+    })
+
+
+@app.post("/admin/tokens/add")
+async def admin_tokens_add(
+    request: Request, 
+    token: str = Form(...), 
+    description: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    if not get_admin_from_cookie(request):
+        return RedirectResponse(url="/", status_code=303)
+    
+    existing = db.query(VKToken).filter(VKToken.token == token).first()
+    if existing:
+        return RedirectResponse(url="/admin/tokens?error=duplicate", status_code=303)
+    
+    new_token = VKToken(token=token, description=description, is_active=True)
+    db.add(new_token)
+    db.commit()
+    
+    TokenManager._instance = None
+    
+    return RedirectResponse(url="/admin/tokens?success=1", status_code=303)
+
+
+@app.post("/admin/tokens/{token_id}/delete")
+async def admin_tokens_delete(request: Request, token_id: int, db: Session = Depends(get_db)):
+    if not get_admin_from_cookie(request):
+        return RedirectResponse(url="/", status_code=303)
+    
+    token = db.query(VKToken).filter(VKToken.id == token_id).first()
+    if token:
+        db.delete(token)
+        db.commit()
+        TokenManager._instance = None
+    
+    return RedirectResponse(url="/admin/tokens", status_code=303)
+
+
+@app.post("/admin/tokens/{token_id}/toggle")
+async def admin_tokens_toggle(request: Request, token_id: int, db: Session = Depends(get_db)):
+    if not get_admin_from_cookie(request):
+        return RedirectResponse(url="/", status_code=303)
+    
+    token = db.query(VKToken).filter(VKToken.id == token_id).first()
+    if token:
+        token.is_active = not token.is_active
+        db.commit()
+        TokenManager._instance = None
+    
+    return RedirectResponse(url="/admin/tokens", status_code=303)
+
+
 @app.get("/version", response_class=HTMLResponse, include_in_schema=False)
 async def version_page(request: Request):
     from config.settings import APP_VERSION, VK_API_VERSION, BASE_DIR
@@ -716,20 +619,11 @@ async def version_page(request: Request):
 
 @app.get("/api/version", response_class=JSONResponse, include_in_schema=False)
 async def get_version_api():
-    """JSON API для получения версии (для скриптов и CI/CD)"""
     from config.settings import APP_VERSION, VK_API_VERSION
     return {
         "version": APP_VERSION,
         "api_version": f"v{VK_API_VERSION}",
         "build": os.getenv("BUILD_NUMBER", "local")
-    }
-
-
-@app.get("/health", response_class=JSONResponse, include_in_schema=False)
-async def health_check():
-    return {
-        "status": "ok",
-        "version": get_app_version(),
     }
     
 @app.on_event("startup")
@@ -737,6 +631,5 @@ async def startup_event():
     import asyncio
     from app.background import run_background_tasks
 
-    Base.metadata.create_all(bind=engine)
     asyncio.create_task(run_background_tasks())
     print("Фоновый сбор метрик запущен")
