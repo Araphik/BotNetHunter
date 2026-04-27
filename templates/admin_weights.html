@@ -1,0 +1,61 @@
+{% extends "admin_base.html" %}
+{% block title %}Веса модулей{% endblock %}
+{% set active_page = 'weights' %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Веса модулей</h1>
+</div>
+
+<form method="post" action="/admin/weights/save">
+    <div class="row g-4">
+        {% for key, config in weights.items() %}
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">{{ config.label }}</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small">{{ config.description }}</p>
+                    
+                    <label class="form-label fw-bold">
+                        Вес: <span id="value-{{ key }}" class="text-primary">{{ config.value }}</span>
+                    </label>
+                    <input 
+                        type="range" 
+                        class="form-range" 
+                        min="{{ config.min }}" 
+                        max="{{ config.max }}" 
+                        step="0.1"
+                        name="{{ key }}" 
+                        id="input-{{ key }}"
+                        value="{{ config.value }}"
+                        oninput="document.getElementById('value-{{ key }}').textContent = this.value"
+                    >
+                    <div class="d-flex justify-content-between small text-muted">
+                        <span>{{ config.min }}</span>
+                        <span>Базовый: 1.0</span>
+                        <span>{{ config.max }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <div class="mt-4 d-flex gap-3">
+        <button type="submit" class="btn btn-primary btn-lg">Сохранить</button>
+        <a href="/admin/weights/reset" class="btn btn-outline-secondary btn-lg">Сбросить</a>
+    </div>
+</form>
+
+<!-- Конфигурация -->
+<div class="card shadow-sm mt-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0">Текущая конфигурация</h5>
+    </div>
+    <div class="card-body">
+        <pre class="bg-light p-3 rounded small"><code>{{ weights_json }}</code></pre>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Отчёт #{{ record.id }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card shadow">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    {% if record.target_type == 'group' %}Группа: {{ record.target }}{% else %}Профиль: @{{ details.profile.screen_name }}{% endif %}
+                </h5>
+                <a href="/dashboard" class="btn btn-sm btn-secondary">Назад</a>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-4"><strong>Цель:</strong> {{ record.target }}</div>
+                    <div class="col-md-4"><strong>Тип:</strong> {{ 'Группа' if record.target_type == 'group' else 'Профиль' }}</div>
+                    <div class="col-md-4"><strong>Дата:</strong> {{ record.created_at.strftime('%d.%m.%Y %H:%M') }}</div>
+                </div>
+
+                {% if record.target_type == 'group' %}
+                    <!-- Групповой отчёт -->
+                    <div class="alert alert-info text-center">
+                        <h4 class="mb-0">Средняя оценка: <span class="fw-bold {% if record.average_score > 60 %}text-success{% elif record.average_score > 30 %}text-warning{% else %}text-danger{% endif %}">{{ record.average_score }}/100</span></h4>
+                        <small>Участников проанализировано: {{ record.members_analyzed }}</small>
+                    </div>
+                    
+                    <h5 class="mt-4">Распределение оценок</h5>
+                    <div style="height: 300px;">
+                        <canvas id="histogramChart"></canvas>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <h6>Интерпретация:</h6>
+                        <ul class="small text-muted">
+                            <li><span class="text-success">■</span> 0-30: Преобладают реальные пользователи</li>
+                            <li><span class="text-warning">■</span> 30-60: Смешанная аудитория</li>
+                            <li><span class="text-danger">■</span> 60-100: Высокая вероятность автоматизации</li>
+                        </ul>
+                    </div>
+                {% else %}
+                    <!-- Профильный отчёт -->
+                    <div class="alert alert-{{ 'success' if record.risk_level == 'NORMAL' else 'warning' if record.risk_level == 'LOW' else 'danger' }} text-center">
+                        <h4>Оценка: {{ record.score }}/100 | Статус: {{ record.risk_level }}</h4>
+                    </div>
+
+                    <h5 class="mt-4">Признаки</h5>
+                    <ul class="list-group mb-4">
+                        {% for r in details.reasons|sort(attribute='points', reverse=True) %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                {{ r.reason }}
+                                <span class="badge bg-dark rounded-pill">{{ r.points }} бал.</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                    
+                    {% if details.anomalies %}
+                        <h5>Аномалии</h5>
+                        <ul class="list-group">
+                            {% for a in details.anomalies %}
+                                <li class="list-group-item"><strong>{{ a.category }}:</strong> {{ a.description }}</li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if record.target_type == 'group' and record.score_distribution %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const dist = JSON.parse('{{ record.score_distribution|safe }}');
+    const labels = Object.keys(dist);
+    const data = Object.values(dist);
+    
+    const colors = data.map((val, idx) => {
+        const rangeStart = idx * 10;
+        if (rangeStart >= 60) return '#dc3545';
+        if (rangeStart >= 30) return '#ffc107';
+        return '#198754';
+    });
+
+    new Chart(document.getElementById('histogramChart'), {
+        type: 'bar',
+         {
+            labels: labels,
+            datasets: [{
+                label: 'Участников',
+                data: data,
+                backgroundColor: colors,
+                borderColor: colors,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { stepSize: 1 } },
+                x: { title: { display: true, text: 'Диапазон оценки' } }
+            }
+        }
+    });
+});
+</script>
+{% endif %}
+{% endblock %}

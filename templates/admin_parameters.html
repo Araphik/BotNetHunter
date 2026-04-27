@@ -1,0 +1,79 @@
+{% extends "admin_base.html" %}
+{% block title %}Параметры модулей{% endblock %}
+{% set active_page = 'parameters' %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Параметры модулей</h1>
+    <div class="btn-group">
+        <a href="/admin/weights" class="btn btn-outline-secondary">К настройке весов</a>
+    </div>
+</div>
+
+<form method="post" action="/admin/weights/parameters/save" id="paramsForm">
+    {% for module_key, module in modules.items() %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="mb-0">{{ module.label }}</h5>
+                <small class="text-muted">{{ module.description }}</small>
+            </div>
+            <div class="input-group input-group-sm" style="width: 200px;">
+                <span class="input-group-text">Вес</span>
+                <input type="number" class="form-control" name="global_weight_{{ module_key }}" 
+                       value="{{ module.global_weight }}" min="0.1" max="3.0" step="0.1">
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                {% for param_key, param in module.parameters.items() %}
+                <div class="col-md-6 col-lg-4">
+                    <div class="border rounded p-3 h-100">
+                        <label class="form-label fw-bold small d-block mb-2">{{ param.label }}</label>
+                        <p class="text-muted small mb-3" style="min-height: 40px;">{{ param.description }}</p>
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <input type="range" class="form-range flex-grow-1" 
+                                   min="{{ param.min }}" max="{{ param.max }}" step="{{ param.step }}"
+                                   name="param_{{ module_key }}_{{ param_key }}_value"
+                                   id="input_{{ module_key }}_{{ param_key }}"
+                                   value="{{ param.value }}"
+                                   oninput="updateValue('{{ module_key }}_{{ param_key }}', this.value)">
+                            <span class="badge bg-primary fs-6" id="val_{{ module_key }}_{{ param_key }}">{{ param.value }}</span>
+                        </div>
+                        <small class="text-muted d-block">{{ param.min }} — {{ param.max }} {{ param.unit }}</small>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    
+    <div class="position-sticky bottom-0 bg-light py-3 border-top">
+        <div class="d-flex gap-3 justify-content-end">
+            <a href="/admin/weights/parameters/reset" class="btn btn-outline-danger" 
+               onclick="return confirm('Сбросить все параметры к значениям по умолчанию?')">
+                Сбросить
+            </a>
+            <button type="submit" class="btn btn-primary btn-lg px-4">Сохранить</button>
+        </div>
+    </div>
+</form>
+
+{% if request.query_params.get('saved') == '1' %}
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div class="toast show bg-success text-white" role="alert">
+        <div class="toast-body">Настройки сохранены</div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateValue(id, value) { document.getElementById('val_' + id).textContent = value; }
+let formChanged = false;
+document.getElementById('paramsForm').addEventListener('input', () => formChanged = true);
+window.addEventListener('beforeunload', (e) => { if (formChanged) { e.preventDefault(); e.returnValue = ''; } });
+</script>
+{% endblock %}

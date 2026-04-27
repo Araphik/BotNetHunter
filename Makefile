@@ -1,0 +1,91 @@
+PYTHON     ?= python
+PIP        ?= $(PYTHON) -m pip
+UVICORN    ?= $(PYTHON) -m uvicorn
+APP_MODULE ?= app.main:app
+HOST       ?= 127.0.0.1
+PORT       ?= 8000
+IMAGE      ?= botnethunter
+
+.PHONY: install check run db-up db-down clean init docker-build docker-up docker-down docker-logs docker-shell version version-bump-patch version-bump-minor version-bump-major version-set
+
+# — Локальная разработка —
+
+init:
+	@test -f .env && echo ".env уже существует, пропускаю" || cp .env.example .env
+
+install:
+	$(PIP) install --upgrade pip
+	$(PIP) install -r requirements.txt
+
+check:
+	$(PYTHON) -m compileall analyzers api app config core models utils
+	$(PYTHON) -c "from app.main import app; print(app.title)"
+
+db-up:
+	docker compose up -d postgres
+
+db-down:
+	docker compose stop postgres
+
+run: db-up
+	$(UVICORN) $(APP_MODULE) --host $(HOST) --port $(PORT) --reload
+
+clean:
+	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
+	find . -type f -name "*.pyc" -delete
+
+# — Docker —
+
+docker-build:
+	@APP_VERSION=$$(cat VERSION) docker compose build
+
+docker-up:
+	@APP_VERSION=$$(cat VERSION) docker compose up -d
+
+docker-down:
+	docker compose down
+
+docker-logs:
+	docker compose logs -f
+
+docker-shell:
+	docker compose exec botnethunter bash
+	
+version:
+	@cat VERSION
+
+version-bump-patch:
+	@current=$$(cat VERSION); \
+	major=$$(echo $$current | cut -d. -f1); \
+	minor=$$(echo $$current | cut -d. -f2); \
+	patch=$$(echo $$current | cut -d. -f3); \
+	new_patch=$$((patch + 1)); \
+	new_version="$$major.$$minor.$$new_patch"; \
+	echo "$$new_version" > VERSION; \
+	echo "Updated: $$current -> $$new_version"
+
+version-bump-minor:
+	@current=$$(cat VERSION); \
+	major=$$(echo $$current | cut -d. -f1); \
+	minor=$$(echo $$current | cut -d. -f2); \
+	new_version="$$major.$$((minor + 1)).0"; \
+	echo "$$new_version" > VERSION; \
+	echo "Updated: $$current -> $$new_version"
+
+version-bump-major:
+	@current=$$(cat VERSION); \
+	major=$$(echo $$current | cut -d. -f1); \
+	new_version="$$(($$major + 1)).0.0"; \
+	echo "$$new_version" > VERSION; \
+	echo "Updated: $$current -> $$new_version"
+	
+version-set:
+	@if [ -z "$(word 2,$(MAKECMDGOALS))" ]; then \
+		echo "Usage: make version-set 1.0.0"; \
+		exit 1; \
+	fi
+	@echo "$(word 2,$(MAKECMDGOALS))" > VERSION
+	@echo "Version set to $(word 2,$(MAKECMDGOALS))"
+
+%:
+	@true
