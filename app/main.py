@@ -136,10 +136,20 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     history = db.query(AnalysisHistory).filter(AnalysisHistory.user_id == user.id).order_by(AnalysisHistory.created_at.desc()).limit(50).all()
     progress_percent = min(user.requests_today / max(user.requests_limit, 1) * 100, 100)
     requests_left = max(user.requests_limit - user.requests_today, 0)
-    return templates.TemplateResponse(request, "dashboard.html", {
+    
+    response = templates.TemplateResponse(request, "dashboard.html", {
         "request": request, "user": user, "history": history, "error": None,
         "progress_percent": progress_percent, "requests_left": requests_left,
     })
+    
+    # Добавляем заголовки rate limit
+    response.headers["X-RateLimit-Limit"] = str(user.requests_limit)
+    response.headers["X-RateLimit-Remaining"] = str(requests_left)
+    response.headers["X-RateLimit-Reset"] = str(int((datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).timestamp()))
+    
+    return response
+    
+
 @app.post("/analyze")
 async def analyze(request: Request, target: str = Form(...), target_type: str = Form("user"), db: Session = Depends(get_db)):
     # Проверка админа
@@ -157,11 +167,16 @@ async def analyze(request: Request, target: str = Form(...), target_type: str = 
         
         if user.requests_today >= user.requests_limit:
             history = db.query(AnalysisHistory).filter(AnalysisHistory.user_id == user.id).order_by(AnalysisHistory.created_at.desc()).limit(50).all()
-            return templates.TemplateResponse(request, "dashboard.html", {
+            response = templates.TemplateResponse(request, "dashboard.html", {
                 "request": request, "user": user, "history": history,
                 "error": f"Лимит исчерпан ({user.requests_today}/{user.requests_limit}).",
                 "progress_percent": 100, "requests_left": 0,
             })
+            response.status_code = 429
+            response.headers["Retry-After"] = "86400"
+            response.headers["X-RateLimit-Limit"] = str(user.requests_limit)
+            response.headers["X-RateLimit-Remaining"] = "0"
+            return response
 
     tm = TokenManager()
     if not tm.tokens:
