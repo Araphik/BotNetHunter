@@ -3,6 +3,10 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
 
+from pydantic import BaseModel, Field, validator
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -98,3 +102,52 @@ class VKToken(Base):
     
     def __repr__(self):
         return f"<VKToken(id={self.id}, active={self.is_active})>"
+    
+
+
+class AnalyzeRequest(BaseModel):
+    """Запрос на анализ профиля/группы (API)"""
+    target: str = Field(..., min_length=1, max_length=255, description="ID пользователя или группы ВКонтакте")
+    target_type: str = Field(default="user", pattern="^(user|group)$", description="Тип цели: user или group")
+    
+    @validator('target')
+    def validate_target(cls, v):
+        if not v.strip():
+            raise ValueError('target не может быть пустым')
+        return v.strip()
+
+
+class AnalyzeResponse(BaseModel):
+    """Ответ API после анализа"""
+    id: int = Field(..., description="ID записи в истории")
+    target: str = Field(..., description="Проанализированный объект")
+    target_type: str = Field(..., description="Тип: user или group")
+    score: Optional[int] = Field(None, description="Балл риска (0-100) для профиля")
+    risk_level: Optional[str] = Field(None, description="Уровень риска: NORMAL, MEDIUM, HIGH")
+    average_score: Optional[float] = Field(None, description="Средний балл для группы")
+    members_analyzed: Optional[int] = Field(None, description="Количество проанализированных участников")
+    details: Dict[str, Any] = Field(default_factory=dict, description="Детали анализа")
+    created_at: datetime = Field(..., description="Время создания записи")
+
+
+class HistoryItemResponse(BaseModel):
+    """Элемент истории анализа (для API)"""
+    id: int
+    target: str
+    target_type: str
+    score: Optional[int]
+    risk_level: Optional[str]
+    created_at: datetime
+
+
+class HistoryListResponse(BaseModel):
+    """Список записей истории (для API)"""
+    items: List[HistoryItemResponse]
+    total: int
+
+
+class APIError(BaseModel):
+    """Стандартный формат ошибки API"""
+    error: str
+    detail: Optional[str] = None
+    code: Optional[int] = 400
