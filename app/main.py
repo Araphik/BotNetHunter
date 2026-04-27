@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import uuid
 from fastapi import FastAPI, Request, Depends, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -28,6 +29,33 @@ app = FastAPI(title="BotNetHunter")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
+
+MAX_REQUEST_BODY_SIZE = 1 * 1024 * 1024
+SUPPORTED_REQUEST_MEDIA_TYPES = {
+    "application/json",
+    "application/x-www-form-urlencoded",
+    "multipart/form-data",
+}
+BODY_METHODS = {"POST", "PUT", "PATCH"}
+
+
+def problem_response(status_code: int, title: str, detail: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "title": title,
+            "detail": detail,
+            "requestId": str(uuid.uuid4()),
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        },
+        media_type="application/problem+json",
+    )
+
+
+def normalize_media_type(content_type: str | None) -> str:
+    if not content_type:
+        return ""
+    return content_type.split(";", 1)[0].strip().lower()
 
 
 
@@ -62,6 +90,35 @@ def get_param_value(module_name: str, param_key: str, default: int) -> int:
         return param.param_value if param else default
     except Exception:
         return default
+
+
+@app.middleware("http")
+async def validate_request_body(request: Request, call_next):
+    if request.method in BODY_METHODS:
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                body_size = int(content_length)
+            except ValueError:
+                body_size = 0
+
+            if body_size > MAX_REQUEST_BODY_SIZE:
+                return problem_response(
+                    413,
+                    "Тело запроса слишком велико",
+                    "Размер тела запроса превышает допустимый предел в 1 МБ. Уменьшите объём передаваемых данных.",
+                )
+
+            if body_size > 0:
+                media_type = normalize_media_type(request.headers.get("content-type"))
+                if media_type not in SUPPORTED_REQUEST_MEDIA_TYPES:
+                    return problem_response(
+                        415,
+                        "Неподдерживаемый тип данных",
+                        "Сервер принимает application/json, application/x-www-form-urlencoded или multipart/form-data. Укажите корректный Content-Type и повторите запрос.",
+                    )
+
+    return await call_next(request)
 
 
 @app.middleware("http")
