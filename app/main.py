@@ -1,6 +1,8 @@
 import os
 import json
 import asyncio
+import uuid
+from contextvars import ContextVar
 from fastapi import FastAPI, Request, Depends, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -9,7 +11,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-
 
 from app.database import get_db, engine, Base, SessionLocal
 from app.models import User, AnalysisHistory, AdminSettings, ModuleParameter, VKToken
@@ -22,12 +23,19 @@ from config.settings import ADMIN_EMAIL, ADMIN_PASSWORD
 from core.token_manager import TokenManager
 from api.endpoints import analyze_user, analyze_group
 from config.settings import get_app_version
+from utils.logger import logger, request_id_var
+import logging
 
 # ИНИЦИАЛИЗАЦИЯ
 app = FastAPI(title="BotNetHunter")
 Base.metadata.create_all(bind=engine)
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
+# вырубить дублирующиеся логи от uvicorn
+logging.getLogger("uvicorn.access").disabled = True
+
+
 
 
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ 
@@ -61,6 +69,32 @@ def get_param_value(module_name: str, param_key: str, default: int) -> int:
         return param.param_value if param else default
     except Exception:
         return default
+
+
+@app.middleware("http")
+async def add_request_id_middleware(request: Request, call_next):
+    """Middleware для генерации UUID request ID"""
+    # Берем из заголовка или генерируем новый
+    request_id = request.headers.get("X-Request-ID")
+    if not request_id:
+        request_id = str(uuid.uuid4())
+    
+    # Устанавливаем в контекстную переменную для логирования
+    request_id_var.set(request_id)
+    
+    # Логируем начало запроса
+    logger.info(f"{request.method} {request.url.path} - started")
+    
+    # Выполняем запрос
+    response = await call_next(request)
+    
+    # Добавляем request ID в заголовки ответа
+    response.headers["X-Request-ID"] = request_id
+    
+    # Логируем завершение запроса
+    logger.info(f"{request.method} {request.url.path} - completed with status {response.status_code}")
+    
+    return response
 
 
 @app.middleware("http")
