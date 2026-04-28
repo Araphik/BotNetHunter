@@ -1814,14 +1814,14 @@ components:
             timestamp: "2026-04-26T10:00:00Z"
 
     UnsupportedMediaType:
-      description: "415 — Content-Type запроса не поддерживается"
+      description: "415 — Content-Type запроса не поддерживается. Сервер принимает: application/json, application/x-www-form-urlencoded, multipart/form-data"
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
           example:
             title: Неподдерживаемый тип данных
-            detail: "Сервер принимает application/json, application/x-www-form-urlencoded или multipart/form-data. Укажите корректный Content-Type и повторите запрос."
+            detail: "Сервер принимает только: application/json, application/x-www-form-urlencoded или multipart/form-data. Укажите корректный заголовок Content-Type и повторите запрос."
             requestId: 0191f3a2-1c4b-7e00-a1b2-3c4d5e6f78a8
             timestamp: "2026-04-26T10:00:00Z"
 

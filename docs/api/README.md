@@ -9,7 +9,7 @@
 ## API документация
 
 Полное описание API доступно в формате OpenAPI:  
-[📄 Открыть документацию](https://delightful-baklava-c83b6c.netlify.app/)
+[swagger.yaml](swagger.yaml)
 ---
 
 ## Основные endpoints
