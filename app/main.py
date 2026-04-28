@@ -336,6 +336,52 @@ async def history_detail(request: Request, history_id: int, db: Session = Depend
     })
 
 
+@app.get("/account/change-password", response_class=HTMLResponse, tags=["Web UI"], include_in_schema=False)
+async def change_password_page(request: Request, db: Session = Depends(get_db)):
+    user = get_user_from_cookie(request, db)
+    if not user:
+        return RedirectResponse(url="/")
+    return templates.TemplateResponse(request, "change_password.html", {
+        "request": request,
+        "user": user,
+        "error": None,
+    })
+
+
+@app.post("/account/change-password", response_class=HTMLResponse, tags=["Web UI"], include_in_schema=False)
+async def change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = get_user_from_cookie(request, db)
+    if not user:
+        return RedirectResponse(url="/")
+
+    def render_error(message: str):
+        return templates.TemplateResponse(request, "change_password.html", {
+            "request": request,
+            "user": user,
+            "error": message,
+        })
+
+    if not verify_password(current_password, user.hashed_password):
+        return render_error("Текущий пароль указан неверно")
+    if new_password != confirm_password:
+        return render_error("Новый пароль и повтор пароля не совпадают")
+    if len(new_password) < 8:
+        return render_error("Новый пароль должен быть не короче 8 символов")
+    if current_password == new_password:
+        return render_error("Новый пароль должен отличаться от текущего")
+
+    user.hashed_password = get_password_hash(new_password)
+    db.commit()
+
+    return RedirectResponse(url="/dashboard", status_code=303)
+
+
 @app.post("/account/delete", tags=["Web UI"], include_in_schema=False)
 async def delete_account(request: Request, db: Session = Depends(get_db)):
     user = get_user_from_cookie(request, db)

@@ -1,4 +1,22 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: botnethunter-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-botnethunter}
+      POSTGRES_USER: ${POSTGRES_USER:-botnethunter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-botnethunter}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-botnethunter} -d ${POSTGRES_DB:-botnethunter}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
   botnethunter:
     build: .
     image: botnethunter:${APP_VERSION:-1.0.0}
@@ -10,8 +28,11 @@ services:
       - .env
     environment:
       - APP_VERSION=${APP_VERSION:-1.0.0}
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-botnethunter}:${POSTGRES_PASSWORD:-botnethunter}@postgres:5432/${POSTGRES_DB:-botnethunter}
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
-      # База данных живёт на хосте — не теряется при пересборке
       - ./data:/app/data
       - ./VERSION:/app/VERSION:ro
     healthcheck:
@@ -20,3 +41,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+volumes:
+  postgres_data:

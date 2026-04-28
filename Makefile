@@ -1,4 +1,4 @@
-PYTHON     ?= python
+PYTHON     ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; elif command -v python3 >/dev/null 2>&1; then echo python3; else echo python; fi)
 PIP        ?= $(PYTHON) -m pip
 UVICORN    ?= $(PYTHON) -m uvicorn
 APP_MODULE ?= app.main:app
@@ -6,7 +6,7 @@ HOST       ?= 127.0.0.1
 PORT       ?= 8000
 IMAGE      ?= botnethunter
 
-.PHONY: install check run db-up db-down clean init docker-build docker-up docker-down docker-logs docker-shell version version-bump-patch version-bump-minor version-bump-major version-set
+.PHONY: install check run db-up wait-db db-down clean init docker-build docker-up docker-down docker-logs docker-shell version version-bump-patch version-bump-minor version-bump-major version-set
 
 # — Локальная разработка —
 
@@ -17,17 +17,29 @@ install:
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
 
-check:
+check: db-up wait-db
 	$(PYTHON) -m compileall analyzers api app config core models utils
 	$(PYTHON) -c "from app.main import app; print(app.title)"
 
 db-up:
 	docker compose up -d postgres
 
+wait-db:
+	@echo "Waiting for PostgreSQL..."
+	@for i in $$(seq 1 30); do \
+		if docker compose exec -T postgres pg_isready -U botnethunter -d botnethunter >/dev/null 2>&1; then \
+			echo "PostgreSQL is ready"; \
+			exit 0; \
+		fi; \
+		sleep 1; \
+	done; \
+	docker compose logs postgres; \
+	exit 1
+
 db-down:
 	docker compose stop postgres
 
-run: db-up
+run: db-up wait-db
 	$(UVICORN) $(APP_MODULE) --host $(HOST) --port $(PORT) --reload
 
 clean:
