@@ -6,7 +6,7 @@ HOST       ?= 127.0.0.1
 PORT       ?= 8000
 IMAGE      ?= botnethunter
 
-.PHONY: install check run db-up wait-db db-down clean init docker-build docker-up docker-down docker-logs docker-shell version version-bump-patch version-bump-minor version-bump-major version-set
+.PHONY: install check run db-up wait-db db-down clean init docker-build docker-up docker-up-prod docker-down docker-logs docker-shell version version-bump-patch version-bump-minor version-bump-major version-set
 
 # — Локальная разработка —
 
@@ -53,6 +53,9 @@ docker-build:
 
 docker-up:
 	@APP_VERSION=$$(cat VERSION) docker compose up -d
+
+docker-up-prod:
+	@APP_VERSION=$$(cat VERSION) docker compose --profile prod up -d
 
 docker-down:
 	docker compose down

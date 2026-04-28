@@ -49,6 +49,11 @@ logging.getLogger("uvicorn.access").disabled = True
 security = HTTPBearer(auto_error=False)
 
 
+@app.get("/health", tags=["Service"])
+async def health():
+    return {"status": "ok", "service": "botnethunter", "version": APP_VERSION}
+
+
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ 
 def get_user_from_cookie(request: Request, db: Session):
     token = request.cookies.get("token")
