@@ -28,8 +28,9 @@ class VKClient:
             return None
 
     def request(self, method, params, max_retries=None):
+        # ✅ ИСПРАВЛЕНО: используем метод вместо прямого доступа к .tokens
         if max_retries is None:
-            max_retries = len(self.token_manager.tokens) if self.token_manager.tokens else 1
+            max_retries = max(self.token_manager.get_tokens_count(), 1)
 
         for attempt in range(max_retries):
             token = self.token_manager.get_current_token()
@@ -77,7 +78,6 @@ class VKClient:
         })
 
     def get_users_batch(self, user_ids_list, fields):
-
         from models.user_profile import UserProfile
         
         results = []

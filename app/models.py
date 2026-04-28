@@ -1,9 +1,11 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Boolean, Float, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Boolean, Float
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
 
-# хранение в БД пользователей, истории анализа, настроек панели администратора, загруженности системы
+from pydantic import BaseModel, Field, validator
+from typing import Optional, List, Dict, Any
+from datetime import datetime
 
 class User(Base):
     __tablename__ = "users"
@@ -28,13 +30,12 @@ class AnalysisHistory(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     
     target = Column(String(255), nullable=False)
-    target_type = Column(String(10), default="user")  # "user" или "group"
+    target_type = Column(String(10), default="user")
     
     score = Column(Integer, nullable=True)
     risk_level = Column(String(20), nullable=True)
     details = Column(Text, nullable=True)
     
-    # Поля для группового анализа
     average_score = Column(Float, nullable=True)
     score_distribution = Column(Text, nullable=True)
     members_analyzed = Column(Integer, nullable=True)
@@ -72,19 +73,81 @@ class SystemMetrics(Base):
 
 
 class ModuleParameter(Base):
-    """Параметры аналитических модулей для настройки весов (п.8.1 ТЗ)"""
     __tablename__ = "module_parameters"
     
     id = Column(Integer, primary_key=True)
-    module_name = Column(String(100), nullable=False)  # например: "profile_analyzer"
-    param_key = Column(String(100), nullable=False)     # например: "empty_profile_penalty"
-    param_value = Column(Integer, nullable=False)       # значение параметра
-    description = Column(String(255), nullable=True)    # описание для админки
+    module_name = Column(String(100), nullable=False)
+    param_key = Column(String(100), nullable=False)
+    param_value = Column(Integer, nullable=False)
+    description = Column(String(255), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    __table_args__ = (
-        UniqueConstraint("module_name", "param_key", name="uq_module_parameter_key"),
-    )
+    __table_args__ = ({"sqlite_autoincrement": True},)
 
     def __repr__(self):
         return f"<ModuleParameter(module='{self.module_name}', key='{self.param_key}', value={self.param_value})>"
+
+
+class VKToken(Base):
+    """Модель для хранения VK API токенов"""
+    __tablename__ = "vk_tokens"
+    
+    id = Column(Integer, primary_key=True)
+    token = Column(String(500), unique=True, nullable=False)
+    is_active = Column(Boolean, default=True)
+    description = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_used_at = Column(DateTime, nullable=True)
+    requests_count = Column(Integer, default=0)
+    
+    def __repr__(self):
+        return f"<VKToken(id={self.id}, active={self.is_active})>"
+    
+
+
+class AnalyzeRequest(BaseModel):
+    """Запрос на анализ профиля/группы (API)"""
+    target: str = Field(..., min_length=1, max_length=255, description="ID пользователя или группы ВКонтакте")
+    target_type: str = Field(default="user", pattern="^(user|group)$", description="Тип цели: user или group")
+    
+    @validator('target')
+    def validate_target(cls, v):
+        if not v.strip():
+            raise ValueError('target не может быть пустым')
+        return v.strip()
+
+
+class AnalyzeResponse(BaseModel):
+    """Ответ API после анализа"""
+    id: int = Field(..., description="ID записи в истории")
+    target: str = Field(..., description="Проанализированный объект")
+    target_type: str = Field(..., description="Тип: user или group")
+    score: Optional[int] = Field(None, description="Балл риска (0-100) для профиля")
+    risk_level: Optional[str] = Field(None, description="Уровень риска: NORMAL, MEDIUM, HIGH")
+    average_score: Optional[float] = Field(None, description="Средний балл для группы")
+    members_analyzed: Optional[int] = Field(None, description="Количество проанализированных участников")
+    details: Dict[str, Any] = Field(default_factory=dict, description="Детали анализа")
+    created_at: datetime = Field(..., description="Время создания записи")
+
+
+class HistoryItemResponse(BaseModel):
+    """Элемент истории анализа (для API)"""
+    id: int
+    target: str
+    target_type: str
+    score: Optional[int]
+    risk_level: Optional[str]
+    created_at: datetime
+
+
+class HistoryListResponse(BaseModel):
+    """Список записей истории (для API)"""
+    items: List[HistoryItemResponse]
+    total: int
+
+
+class APIError(BaseModel):
+    """Стандартный формат ошибки API"""
+    error: str
+    detail: Optional[str] = None
+    code: Optional[int] = 400

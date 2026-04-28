@@ -21,37 +21,15 @@ REQUEST_DELAY = float(os.getenv('REQUEST_DELAY', '0.35'))
 FLOOD_WAIT = int(os.getenv('FLOOD_WAIT', '3'))
 MAX_FRIENDS_ANALYZE = int(os.getenv('MAX_FRIENDS_ANALYZE', '100'))
 
-# VK токены: VK_TOKEN_1, VK_TOKEN_2, ... из .env
-VK_TOKENS = []
-i = 1
-while True:
-    token = os.getenv(f'VK_TOKEN_{i}')
-    if not token:
-        break
-    VK_TOKENS.append(token)
-    i += 1
-
-if not VK_TOKENS:
-    raise RuntimeError("Не задан ни один VK токен. Добавьте VK_TOKEN_1 (и т.д.) в .env!")
+VK_TOKENS = []  # Заглушка, не используется
 
 # Auth & DB
 SECRET_KEY = os.getenv('SECRET_KEY')
 if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY не задан в .env!")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 часа
-DATABASE_URL = os.getenv(
-    'DATABASE_URL',
-    'postgresql+psycopg://botnethunter:botnethunter@localhost:5432/botnethunter'
-)
-SECURITY_ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv(
-        "SECURITY_ALLOWED_ORIGINS",
-        "http://127.0.0.1:8000,http://localhost:8000"
-    ).split(",")
-    if origin.strip()
-]
+ACCESS_TOKEN_EXPIRE_MINUTES = 1440
+DATABASE_URL = os.getenv('DATABASE_URL', f"sqlite:///{BASE_DIR}/data/botnethunter.db")
 
 # Admin credentials
 ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
@@ -60,7 +38,6 @@ if not ADMIN_EMAIL or not ADMIN_PASSWORD:
     raise RuntimeError("ADMIN_EMAIL и ADMIN_PASSWORD должны быть заданы в .env!")
 
 def get_app_version() -> str:
-    """Динамически получает версию из окружения или файла"""
     return os.getenv("APP_VERSION") or (
         (BASE_DIR / "VERSION").read_text().strip() 
         if (BASE_DIR / "VERSION").exists() 

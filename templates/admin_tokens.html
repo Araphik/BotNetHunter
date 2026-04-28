@@ -1,0 +1,147 @@
+{% extends "admin_base.html" %}
+{% block title %}VK Токены{% endblock %}
+{% set active_page = 'tokens' %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">VK Токены</h1>
+    <div class="btn-group">
+        <a href="/admin" class="btn btn-outline-secondary">← Назад</a>
+    </div>
+</div>
+
+<div class="alert alert-info">
+    <strong>Информация:</strong> Управление токенами для доступа к VK API. Активные токены используются для анализа профилей и групп.
+</div>
+
+<!-- Форма добавления токена -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0">Добавить токен</h5>
+    </div>
+    <div class="card-body">
+        <form method="post" action="/admin/tokens/add" class="row g-3">
+            <div class="col-md-8">
+                <label class="form-label">VK Token</label>
+                <input type="text" name="token" class="form-control" placeholder="vk1.a.XXXXX..." required>
+                <small class="text-muted">Токен доступа VK API (получите на https://vk.com/dev)</small>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Описание (опционально)</label>
+                <input type="text" name="description" class="form-control" placeholder="Например: Токен 1">
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary">Добавить токен</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Статистика -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body text-center">
+                <h3 class="mb-0">{{ tokens|length }}</h3>
+                <small class="text-muted">Всего токенов</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body text-center">
+                <h3 class="mb-0">{{ active_count }}</h3>
+                <small class="text-muted">Активных</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body text-center">
+                <h3 class="mb-0">{{ tokens|length - active_count }}</h3>
+                <small class="text-muted">Неактивных</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Список токенов -->
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h5 class="mb-0">Список токенов</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Токен</th>
+                        <th>Описание</th>
+                        <th>Статус</th>
+                        <th>Запросов</th>
+                        <th>Создан</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for token in tokens %}
+                    <tr>
+                        <td>{{ token.id }}</td>
+                        <td>
+                            <code>{{ token.token[:20] }}...</code>
+                            <small class="text-muted">(скрыт)</small>
+                        </td>
+                        <td>{{ token.description or '—' }}</td>
+                        <td>
+                            {% if token.is_active %}
+                                <span class="badge bg-success">Активен</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Неактивен</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ token.requests_count }}</td>
+                        <td class="small">{{ token.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <form method="post" action="/admin/tokens/{{ token.id }}/toggle" class="d-inline">
+                                    <button type="submit" class="btn btn-outline-{{ 'warning' if token.is_active else 'success' }}">
+                                        {{ 'Выключить' if token.is_active else 'Включить' }}
+                                    </button>
+                                </form>
+                                <form method="post" action="/admin/tokens/{{ token.id }}/delete" class="d-inline" 
+                                      onsubmit="return confirm('Удалить токен? Это действие нельзя отменить.');">
+                                    <button type="submit" class="btn btn-outline-danger">Удалить</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">
+                            Токены не добавлены. Добавьте первый токен выше.
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if request.query_params.get('success') == '1' %}
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div class="toast show bg-success text-white" role="alert">
+        <div class="toast-body">Токен успешно добавлен!</div>
+    </div>
+</div>
+{% endif %}
+
+{% if request.query_params.get('error') == 'duplicate' %}
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div class="toast show bg-danger text-white" role="alert">
+        <div class="toast-body">Ошибка: такой токен уже существует!</div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
