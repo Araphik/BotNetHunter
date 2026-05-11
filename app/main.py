@@ -28,7 +28,51 @@ from core.token_manager import TokenManager
 from api.endpoints import analyze_user, analyze_group
 from config.settings import get_app_version
 from utils.logger import logger, request_id_var
+from app.rate_limiter import rate_limiter
+from app.csrf import generate_csrf_token, validate_csrf_token, CSRF_COOKIE_NAME, CSRF_COOKIE_MAX_AGE
 import logging
+
+
+def _set_csrf_cookie(response, new_secret: str | None):
+    """Устанавливает куку csrf_secret в ответ, если был сгенерирован новый секрет."""
+    if new_secret:
+        response.set_cookie(
+            CSRF_COOKIE_NAME,
+            new_secret,
+            httponly=True,
+            max_age=CSRF_COOKIE_MAX_AGE,
+            secure=True,
+            samesite="lax",
+        )
+    return response
+
+
+def csrf_template_response(request, template_name: str, context: dict):
+    """
+    Рендерит шаблон с csrf_token и при необходимости устанавливает куку csrf_secret.
+    Использовать вместо прямого templates.TemplateResponse + generate_csrf_token.
+    """
+    token, new_secret = generate_csrf_token(request)
+    context["csrf_token"] = token
+    response = templates.TemplateResponse(request, template_name, context)
+    return _set_csrf_cookie(response, new_secret)
+
+
+# uuid7 — если пакет не установлен, fallback на uuid4
+try:
+    from uuid_extensions import uuid7 as _uuid7
+    def new_request_id() -> str:
+        return str(_uuid7())
+except ImportError:
+    def new_request_id() -> str:  # type: ignore[misc]
+        return str(uuid.uuid4())
+
+# Доверенные origin для CORS
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", "https://botnethunter.duckdns.org").split(",")
+    if o.strip()
+]
 
 # ИНИЦИАЛИЗАЦИЯ
 app = FastAPI(
@@ -121,21 +165,86 @@ async def get_current_api_user(request: Request, db: Session = Depends(get_db), 
     return None
 
 
-# MIDDLEWARE 
+# MIDDLEWARE
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Rate limiting: не более 60 запросов в минуту с одного IP или токена."""
+    path = request.url.path
+    # Пропускаем health-check и статические файлы (CSS, JS, шрифты)
+    if path == "/health" or path.startswith("/static/"):
+        return await call_next(request)
+
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        rate_key = "token:" + auth_header[7:]
+    else:
+        forwarded_for = request.headers.get("X-Forwarded-For", "")
+        rate_key = "ip:" + (forwarded_for.split(",")[0].strip() if forwarded_for else (request.client.host if request.client else "unknown"))
+
+    allowed, remaining = rate_limiter.is_allowed(rate_key)
+    if not allowed:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too Many Requests. Попробуйте через минуту."},
+            headers={
+                "Retry-After": "60",
+                "X-RateLimit-Limit": str(rate_limiter.max_requests),
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Window": str(rate_limiter.window),
+            },
+        )
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def add_request_id_middleware(request: Request, call_next):
-    """Middleware для генерации UUID request ID"""
-    request_id = request.headers.get("X-Request-ID")
-    if not request_id:
-        request_id = str(uuid.uuid4())
-    
+    """Middleware для генерации UUIDv7 request ID и логирования запросов."""
+    request_id = request.headers.get("X-Request-ID") or new_request_id()
+
     request_id_var.set(request_id)
     logger.info(f"{request.method} {request.url.path} - started")
-    
+
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
     logger.info(f"{request.method} {request.url.path} - completed with status {response.status_code}")
-    
+
+    return response
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """CSP и CORS-заголовки."""
+    origin = request.headers.get("origin", "")
+    if request.method == "OPTIONS" and origin and origin not in ALLOWED_ORIGINS:
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "CORS: origin not allowed"},
+        )
+
+    response = await call_next(request)
+
+    # Content-Security-Policy
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' https://cdn.jsdelivr.net; "
+        "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "font-src 'self' https://cdn.jsdelivr.net; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none';"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+
+    # CORS — только для явно разрешённых origin
+    if origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Request-ID"
+        response.headers["Vary"] = "Origin"
+
     return response
 
 
@@ -149,11 +258,13 @@ async def add_version_to_templates(request: Request, call_next):
 # HTML-ИНТЕРФЕЙС 
 @app.get("/", response_class=HTMLResponse, tags=["Web UI"], include_in_schema=False)
 async def home(request: Request):
-    return templates.TemplateResponse(request, "login.html")
+    return csrf_template_response(request, "login.html", {})
 
 
 @app.post("/login", tags=["Web UI"], include_in_schema=False)
-async def login(request: Request, email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+async def login(request: Request, email: str = Form(...), password: str = Form(...), csrf_token: str = Form(...), db: Session = Depends(get_db)):
+    if not validate_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
     if is_admin_login(email, password):
         response = RedirectResponse(url="/admin", status_code=303)
         response.set_cookie("admin_email", ADMIN_EMAIL, httponly=True, max_age=86400, secure=True, samesite="lax")
@@ -162,9 +273,9 @@ async def login(request: Request, email: str = Form(...), password: str = Form(.
     
     user = db.query(User).filter(User.email == email).first()
     if not user or not verify_password(password, user.hashed_password):
-        return templates.TemplateResponse(request, "login.html", {"request": request, "error": "Неверный email или пароль"})
+        return csrf_template_response(request, "login.html", {"error": "Неверный email или пароль"})
     if not user.is_active:
-        return templates.TemplateResponse(request, "login.html", {"request": request, "error": "Аккаунт заблокирован"})
+        return csrf_template_response(request, "login.html", {"error": "Аккаунт заблокирован"})
     
     token = create_access_token(data={"sub": user.email})
     response = RedirectResponse(url="/dashboard", status_code=303)
@@ -174,13 +285,15 @@ async def login(request: Request, email: str = Form(...), password: str = Form(.
 
 @app.get("/register", response_class=HTMLResponse, tags=["Web UI"], include_in_schema=False)
 async def register_page(request: Request):
-    return templates.TemplateResponse(request, "register.html")
+    return csrf_template_response(request, "register.html", {})
 
 
 @app.post("/register", tags=["Web UI"], include_in_schema=False)
-async def register(request: Request, email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+async def register(request: Request, email: str = Form(...), password: str = Form(...), csrf_token: str = Form(...), db: Session = Depends(get_db)):
+    if not validate_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
     if db.query(User).filter(User.email == email).first():
-        return templates.TemplateResponse(request, "register.html", {"request": request, "error": "Email уже зарегистрирован"})
+        return csrf_template_response(request, "register.html", {"error": "Email уже зарегистрирован"})
     new_user = User(email=email, hashed_password=get_password_hash(password), requests_limit=DEFAULT_REQUESTS_LIMIT)
     db.add(new_user)
     db.commit()
@@ -210,10 +323,13 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     progress_percent = min(user.requests_today / max(user.requests_limit, 1) * 100, 100)
     requests_left = max(user.requests_limit - user.requests_today, 0)
     
+    token, new_secret = generate_csrf_token(request)
     response = templates.TemplateResponse(request, "dashboard.html", {
         "request": request, "user": user, "history": history, "error": None,
         "progress_percent": progress_percent, "requests_left": requests_left,
+        "csrf_token": token,
     })
+    _set_csrf_cookie(response, new_secret)
     
     response.headers["X-RateLimit-Limit"] = str(user.requests_limit)
     response.headers["X-RateLimit-Remaining"] = str(requests_left)
@@ -223,8 +339,10 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     
 
 @app.post("/analyze", response_class=HTMLResponse, tags=["Web UI"], include_in_schema=False)
-async def analyze_web(request: Request, target: str = Form(...), target_type: str = Form("user"), db: Session = Depends(get_db)):
+async def analyze_web(request: Request, target: str = Form(...), target_type: str = Form("user"), csrf_token: str = Form(...), db: Session = Depends(get_db)):
     """HTML-интерфейс: анализ профиля/группы через форму"""
+    if not validate_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
     if get_admin_from_cookie(request):
         user = None
     else:
@@ -239,11 +357,14 @@ async def analyze_web(request: Request, target: str = Form(...), target_type: st
         
         if user.requests_today >= user.requests_limit:
             history = db.query(AnalysisHistory).filter(AnalysisHistory.user_id == user.id).order_by(AnalysisHistory.created_at.desc()).limit(50).all()
+            token, new_secret = generate_csrf_token(request)
             response = templates.TemplateResponse(request, "dashboard.html", {
                 "request": request, "user": user, "history": history,
                 "error": f"Лимит исчерпан ({user.requests_today}/{user.requests_limit}).",
                 "progress_percent": 100, "requests_left": 0,
+                "csrf_token": token,
             })
+            _set_csrf_cookie(response, new_secret)
             response.status_code = 429
             response.headers["Retry-After"] = "86400"
             response.headers["X-RateLimit-Limit"] = str(user.requests_limit)
@@ -253,8 +374,8 @@ async def analyze_web(request: Request, target: str = Form(...), target_type: st
 
     tm = TokenManager(db)
     if not tm.get_tokens_count():
-        return templates.TemplateResponse(request, "dashboard.html", {
-            "request": request, "user": user, "history": [],
+        return csrf_template_response(request, "dashboard.html", {
+            "user": user, "history": [],
             "error": "Ошибка: Сервис временно недоступен",
             "progress_percent": 0, "requests_left": max(user.requests_limit - user.requests_today, 0) if user else 0,
         })
@@ -268,8 +389,8 @@ async def analyze_web(request: Request, target: str = Form(...), target_type: st
         group_result = analyze_group(target, tm, max_members=remaining_limit)
         
         if not group_result or group_result["members_analyzed"] == 0:
-            return templates.TemplateResponse(request, "dashboard.html", {
-                "request": request, "user": user, "history": [],
+            return csrf_template_response(request, "dashboard.html", {
+                "user": user, "history": [],
                 "error": "Не удалось получить участников группы или список закрыт.",
                 "progress_percent": 0, "requests_left": max(user.requests_limit - user.requests_today, 0) if user else 0,
             })
@@ -294,8 +415,8 @@ async def analyze_web(request: Request, target: str = Form(...), target_type: st
     else:
         result = analyze_user(target, tm)
         if not result:
-            return templates.TemplateResponse(request, "dashboard.html", {
-                "request": request, "user": user, "history": [],
+            return csrf_template_response(request, "dashboard.html", {
+                "user": user, "history": [],
                 "error": "Не удалось получить данные профиля.",
                 "progress_percent": 0, "requests_left": max(user.requests_limit - user.requests_today, 0) if user else 0,
             })
@@ -346,7 +467,7 @@ async def change_password_page(request: Request, db: Session = Depends(get_db)):
     user = get_user_from_cookie(request, db)
     if not user:
         return RedirectResponse(url="/")
-    return templates.TemplateResponse(request, "change_password.html", {
+    return csrf_template_response(request, "change_password.html", {
         "request": request,
         "user": user,
         "error": None,
@@ -359,15 +480,17 @@ async def change_password(
     current_password: str = Form(...),
     new_password: str = Form(...),
     confirm_password: str = Form(...),
+    csrf_token: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    if not validate_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
     user = get_user_from_cookie(request, db)
     if not user:
         return RedirectResponse(url="/")
 
     def render_error(message: str):
-        return templates.TemplateResponse(request, "change_password.html", {
-            "request": request,
+        return csrf_template_response(request, "change_password.html", {
             "user": user,
             "error": message,
         })
@@ -408,6 +531,8 @@ async def analyze_api(
     current_user: User = Depends(get_current_api_user)
 ):
     """ Анализ профиля или группы ВКонтакте """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Требуется авторизация")
     # Проверка лимитов для обычных пользователей
     if current_user and not hasattr(current_user, 'is_admin'):
         today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -525,8 +650,10 @@ async def history_api(
 ):
     """Получение истории анализов текущего пользователя """
 
-    if not current_user or hasattr(current_user, 'is_admin'):
-        # Для админа или неавторизованного — пустой список
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    if hasattr(current_user, 'is_admin'):
+        # Для админа — пустой список (история ведётся по user_id)
         return HistoryListResponse(items=[], total=0)
     
     total = db.query(AnalysisHistory).filter(AnalysisHistory.user_id == current_user.id).count()
@@ -627,16 +754,18 @@ async def admin_weights(request: Request, db: Session = Depends(get_db)):
                 weights[key]["global_weight"] = json.loads(w.value).get("global_weight", weights[key]["global_weight"])
             except Exception:
                 pass
-    return templates.TemplateResponse(request, "admin_weights.html", {
+    return csrf_template_response(request, "admin_weights.html", {
         "request": request, "weights": weights,
         "weights_json": json.dumps(weights, indent=2, ensure_ascii=False),
     })
 
 
 @app.post("/admin/weights/save", tags=["Admin UI"], include_in_schema=False)
-async def admin_weights_save(request: Request, profile_analyzer: float = Form(1.0), social_graph_analyzer: float = Form(1.2), behavior_analyzer: float = Form(0.9), cross_check_analyzer: float = Form(1.1), db: Session = Depends(get_db)):
+async def admin_weights_save(request: Request, profile_analyzer: float = Form(1.0), social_graph_analyzer: float = Form(1.2), behavior_analyzer: float = Form(0.9), cross_check_analyzer: float = Form(1.1), csrf_token: str = Form(...), db: Session = Depends(get_db)):
     if not get_admin_from_cookie(request):
         return RedirectResponse(url="/", status_code=303)
+    if not validate_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
     weights = {"profile_analyzer": profile_analyzer, "social_graph_analyzer": social_graph_analyzer, "behavior_analyzer": behavior_analyzer, "cross_check_analyzer": cross_check_analyzer}
     for key, value in weights.items():
         setting = db.query(AdminSettings).filter(AdminSettings.key == f"weight_{key}").first()
@@ -674,7 +803,7 @@ async def admin_parameters(request: Request, db: Session = Depends(get_db)):
                 modules[key]["global_weight"] = json.loads(w.value).get("global_weight", modules[key]["global_weight"])
             except Exception:
                 pass
-    return templates.TemplateResponse(request, "admin_parameters.html", {
+    return csrf_template_response(request, "admin_parameters.html", {
         "request": request, "modules": modules,
         "modules_json": json.dumps(modules, indent=2, ensure_ascii=False),
     })
@@ -686,6 +815,9 @@ async def admin_parameters_save(request: Request, db: Session = Depends(get_db))
         return RedirectResponse(url="/", status_code=303)
 
     form_data = await request.form()
+    csrf_token = form_data.get("csrf_token", "")
+    if not validate_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
     
     for key, value in form_data.items():
         if key.startswith("param_") and key.endswith("_value"):
@@ -855,10 +987,10 @@ async def admin_tokens(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse(url="/", status_code=303)
     
     tokens = db.query(VKToken).order_by(VKToken.created_at.desc()).all()
-    return templates.TemplateResponse(request, "admin_tokens.html", {
+    return csrf_template_response(request, "admin_tokens.html", {
         "request": request,
         "tokens": tokens,
-        "active_count": sum(1 for t in tokens if t.is_active)
+        "active_count": sum(1 for t in tokens if t.is_active),
     })
 
 
@@ -867,10 +999,13 @@ async def admin_tokens_add(
     request: Request, 
     token: str = Form(...), 
     description: str = Form(None),
+    csrf_token: str = Form(...),
     db: Session = Depends(get_db)
 ):
     if not get_admin_from_cookie(request):
         return RedirectResponse(url="/", status_code=303)
+    if not validate_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
     
     existing = db.query(VKToken).filter(VKToken.token == token).first()
     if existing:
