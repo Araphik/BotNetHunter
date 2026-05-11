@@ -208,106 +208,19 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ### Алгоритмы запуска ПО для отладки
 
-1. Перейти в директорию проекта:
+Полное руководство по развёртыванию: [docs/DEPLOY.md](docs/DEPLOY.md)
 
 ```bash
 cd project_docker
+
+cp .env.example .env  # заполните VK_TOKEN_1 и SECRET_KEY
+
+make docker-build
+
+make docker-up
 ```
 
-2. Создать виртуальное окружение:
-
-```bash
-python -m venv .venv
-```
-
-3. Активировать виртуальное окружение.
-
-Для macOS/Linux:
-
-```bash
-source .venv/bin/activate
-```
-
-Для Windows:
-
-```bash
-.venv\Scripts\activate
-```
-
-4. Установить зависимости:
-
-```bash
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-или:
-
-```bash
-make install
-```
-
-5. Создать файл `.env` в корне проекта:
-
-```bash
-touch .env
-```
-
-6. Заполнить обязательные переменные окружения:
-
-```env
-VK_TOKEN_1=your_vk_token
-SECRET_KEY=replace_with_random_secret_key
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=admin_password
-DATABASE_URL=postgresql+psycopg://botnethunter:botnethunter@localhost:5432/botnethunter
-POSTGRES_DB=botnethunter
-POSTGRES_USER=botnethunter
-POSTGRES_PASSWORD=botnethunter
-SECURITY_ALLOWED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000
-```
-
-`SECRET_KEY` можно сгенерировать командой:
-
-```bash
-python -c "import secrets; print(secrets.token_hex(32))"
-```
-
-7. Запустить PostgreSQL.
-
-Для Docker Compose:
-
-```bash
-docker compose up -d postgres
-```
-
-При локальной установке PostgreSQL создайте базу и пользователя, совпадающие с `DATABASE_URL`.
-
-8. Проверить корректность импорта приложения:
-
-```bash
-make check
-```
-
-9. Запустить сервер разработки:
-
-```bash
-make run
-```
-
-Команда `make run` автоматически запускает контейнер PostgreSQL через `docker compose up -d postgres`, а затем стартует Uvicorn локально.
-
-или:
-
-```bash
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-10. Открыть приложение:
-
-```text
-http://127.0.0.1:8000
-```
+Приложение доступно по адресу: **http://127.0.0.1:8000**
 
 ### Security headers и CORS
 
