@@ -33,7 +33,6 @@ python -c "import secrets; print(secrets.token_hex(32))"
 **Пример минимального содержимого `.env`:**
 
 ```env
-VK_TOKEN_1=your_vk_token_here
 SECRET_KEY=your_generated_secret_key_here
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=secure_admin_password
@@ -78,7 +77,6 @@ make docker-up
 
 | Переменная | Описание | Допустимые значения | По умолчанию |
 |---|---|---|---|
-| `VK_TOKEN_1` | Токен доступа (Service token или User token) к VK API | Строка | **Уникально - указывается пользователем самостоятельно** |
 | `SECRET_KEY` | Криптографический ключ для подписи сессий и токенов безопасности | Строка (hex, мин. 32 символа) | **Уникально - указывается пользователем самостоятельно** |
 | `ADMIN_EMAIL` | Email для учётной записи системного администратора | Строка (формат email) | `admin@example.com` |
 | `ADMIN_PASSWORD` | Пароль первичной учётной записи администратора | Строка | `admin_password` |
