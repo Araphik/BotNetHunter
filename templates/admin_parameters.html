@@ -11,6 +11,7 @@
 </div>
 
 <form method="post" action="/admin/weights/parameters/save" id="paramsForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     {% for module_key, module in modules.items() %}
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-white d-flex justify-content-between align-items-center">

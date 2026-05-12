@@ -23,6 +23,7 @@
                 {% endif %}
                 
                 <form method="post" action="/analyze" id="analyzeForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="mb-3">
                         <label for="target" class="form-label fw-bold">Ссылка, ID или username</label>
                         <input 

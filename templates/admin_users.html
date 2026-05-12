@@ -84,6 +84,7 @@
                                 {% if not user.is_admin %}
                                     {% if user.is_active %}
                                         <form method="post" action="/admin/users/{{ user.id }}/block" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                             <button type="submit" class="btn btn-outline-danger" 
                                                     onclick="return confirm('Заблокировать пользователя {{ user.email }}?')">
                                                 Заблокировать
@@ -91,6 +92,7 @@
                                         </form>
                                     {% else %}
                                         <form method="post" action="/admin/users/{{ user.id }}/unblock" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                             <button type="submit" class="btn btn-outline-success">Разблокировать</button>
                                         </form>
                                     {% endif %}
@@ -112,6 +114,7 @@
                         <div class="modal-dialog">
                             <div class="modal-content">
                                 <form method="post" action="/admin/users/{{ user.id }}/limit">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <div class="modal-header">
                                         <h5 class="modal-title">Лимит: {{ user.email }}</h5>
                                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -148,6 +151,7 @@
     </div>
     <div class="card-body">
         <form method="post" action="/admin/settings/global_limit" class="row g-3 align-items-end">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="col-md-4">
                 <label class="form-label">Лимит по умолчанию для новых пользователей</label>
                 <input type="number" name="global_limit" class="form-control" value="{{ global_limit }}" min="1" max="10000">
