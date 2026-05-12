@@ -22,6 +22,12 @@ services:
     image: botnethunter:${APP_VERSION:-1.0.0}
     container_name: botnethunter
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - .env
     environment:
