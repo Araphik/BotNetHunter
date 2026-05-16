@@ -4,7 +4,6 @@
 {% block content %}
 <div class="row g-4">
     
-    <!-- Форма анализа -->
     <div class="col-lg-5">
         <div class="card shadow h-100 border-primary">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
@@ -36,9 +35,6 @@
                             pattern="^([\w.]+|id\d+|https?://vk\.com/[\w./?=&-]+)$"
                             title="Введите username, ID (id123) или полную ссылку"
                         >
-                        <div class="form-text">
-                            Анализ профилей и групп с открытым списком участников.
-                        </div>
                     </div>
                     
                     <div class="mb-3">
@@ -62,7 +58,6 @@
                 
                 <hr class="my-4">
                 
-                <!-- Лимиты -->
                 <div class="bg-light rounded p-3">
                     <h6 class="fw-bold mb-2">Лимит запросов</h6>
                     <div class="progress mb-2" style="height: 20px;">
@@ -81,7 +76,7 @@
                         {% if user.requests_today >= user.requests_limit %}
                             Лимит исчерпан. Обновится завтра в 00:00.
                         {% else %}
-                            Осталось: {{ requests_left }}
+                            Осталось: {{ requests_left }} запросов
                         {% endif %}
                     </small>
                 </div>
@@ -90,7 +85,6 @@
         </div>
     </div>
     
-    <!-- История -->
     <div class="col-lg-7">
         <div class="card shadow h-100">
             <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
@@ -117,7 +111,7 @@
                         {% for h in history %}
                             <tr class="{% if h.status == 'failed' %}table-danger{% elif h.status == 'pending' %}table-warning{% endif %}">
                                 <td class="small">
-                                    {{ h.created_at.strftime('%d.%m<br>%H:%M')|safe }}
+                                    {{ h.created_at_msk.strftime('%d.%m<br>%H:%M')|safe if h.created_at_msk else h.created_at.strftime('%d.%m<br>%H:%M')|safe }}
                                 </td>
                                 <td>
                                     <span class="fw-medium">{{ h.target }}</span>
@@ -135,7 +129,11 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    {% if h.score is not none %}
+                                    {% if h.target_type == 'group' and h.average_score is not none %}
+                                        <span class="fw-bold {% if h.average_score >= 70 %}text-success{% elif h.average_score >= 40 %}text-warning{% else %}text-danger{% endif %}">
+                                            {{ h.average_score }}/100
+                                        </span>
+                                    {% elif h.score is not none %}
                                         <span class="fw-bold {% if h.score >= 70 %}text-success{% elif h.score >= 40 %}text-warning{% else %}text-danger{% endif %}">
                                             {{ h.score }}/100
                                         </span>
@@ -159,7 +157,7 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    {% if h.status == 'completed' and h.score is not none %}
+                                    {% if h.status == 'completed' %}
                                         <a href="/history/{{ h.id }}" class="btn btn-sm btn-outline-primary">Просмотр</a>
                                     {% else %}
                                         <button class="btn btn-sm btn-outline-secondary" disabled>—</button>
@@ -182,7 +180,6 @@
     
 </div>
 
-<!-- Настройки аккаунта -->
 <div class="row mt-4">
     <div class="col-12">
         <div class="card border-secondary">
@@ -194,7 +191,7 @@
                     <div class="col-md-8">
                         <p class="mb-1"><strong>Email:</strong> {{ user.email }}</p>
                         <p class="mb-0 text-muted small">
-                            Регистрация: {{ user.created_at.strftime('%d.%m.%Y') }}
+                            Регистрация: {{ user.created_at_msk.strftime('%d.%m.%Y') if user.created_at_msk else user.created_at.strftime('%d.%m.%Y') }}
                             {% if user.is_admin %} • <span class="text-danger fw-bold">Администратор</span>{% endif %}
                         </p>
                     </div>

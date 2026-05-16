@@ -1,4 +1,3 @@
-# analyzers/profile_analyzer.py
 import re
 from analyzers.base_analyzer import BaseAnalyzer
 

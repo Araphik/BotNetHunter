@@ -33,6 +33,18 @@ from app.csrf import generate_csrf_token, validate_csrf_token, CSRF_COOKIE_NAME,
 import logging
 
 
+# Часовой пояс Москвы (UTC+3)
+MSK_TZ = timezone(timedelta(hours=3))
+
+
+def to_msk_time(dt: datetime) -> datetime:
+    """Конвертирует datetime в московское время (UTC+3)"""
+    if dt.tzinfo is None:
+        # Если время без часового пояса, считаем что это UTC
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(MSK_TZ)
+
+
 def _set_csrf_cookie(response, new_secret: str | None):
     """Устанавливает куку csrf_secret в ответ, если был сгенерирован новый секрет."""
     if new_secret:
@@ -64,7 +76,7 @@ try:
     def new_request_id() -> str:
         return str(_uuid7())
 except ImportError:
-    def new_request_id() -> str:  # type: ignore[misc]
+    def new_request_id() -> str:
         return str(uuid.uuid4())
 
 # Доверенные origin для CORS
@@ -319,9 +331,19 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     user = get_user_from_cookie(request, db)
     if not user:
         return RedirectResponse(url="/")
-    history = db.query(AnalysisHistory).filter(AnalysisHistory.user_id == user.id).order_by(AnalysisHistory.created_at.desc()).limit(50).all()
+    
+    # Получаем историю и конвертируем время в московское
+    history_raw = db.query(AnalysisHistory).filter(AnalysisHistory.user_id == user.id).order_by(AnalysisHistory.created_at.desc()).limit(50).all()
+    history = []
+    for h in history_raw:
+        h.created_at_msk = to_msk_time(h.created_at) if h.created_at else None
+        history.append(h)
+    
     progress_percent = min(user.requests_today / max(user.requests_limit, 1) * 100, 100)
     requests_left = max(user.requests_limit - user.requests_today, 0)
+    
+    # Конвертируем время пользователя в московское
+    user.created_at_msk = to_msk_time(user.created_at) if user.created_at else None
     
     token, new_secret = generate_csrf_token(request)
     response = templates.TemplateResponse(request, "dashboard.html", {
@@ -333,7 +355,8 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     
     response.headers["X-RateLimit-Limit"] = str(user.requests_limit)
     response.headers["X-RateLimit-Remaining"] = str(requests_left)
-    response.headers["X-RateLimit-Reset"] = str(int((datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).timestamp()))
+    reset_time = to_msk_time(datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1))
+    response.headers["X-RateLimit-Reset"] = str(int(reset_time.timestamp()))
     
     return response
     
@@ -350,10 +373,11 @@ async def analyze_web(request: Request, target: str = Form(...), target_type: st
         if not user:
             return RedirectResponse(url="/")
         
-        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-        if user.last_request_date is None or user.last_request_date.date() < today.date():
+        # Конвертируем текущее время в московское для сравнения дат
+        today = to_msk_time(datetime.utcnow()).replace(hour=0, minute=0, second=0, microsecond=0)
+        if user.last_request_date is None or to_msk_time(user.last_request_date).date() < today.date():
             user.requests_today = 0
-            user.last_request_date = datetime.utcnow()
+            user.last_request_date = datetime.now(MSK_TZ)
         
         if user.requests_today >= user.requests_limit:
             history = db.query(AnalysisHistory).filter(AnalysisHistory.user_id == user.id).order_by(AnalysisHistory.created_at.desc()).limit(50).all()
@@ -369,7 +393,8 @@ async def analyze_web(request: Request, target: str = Form(...), target_type: st
             response.headers["Retry-After"] = "86400"
             response.headers["X-RateLimit-Limit"] = str(user.requests_limit)
             response.headers["X-RateLimit-Remaining"] = "0"
-            response.headers["X-RateLimit-Reset"] = str(int((today + timedelta(days=1)).timestamp()))
+            reset_time = to_msk_time(today + timedelta(days=1))
+            response.headers["X-RateLimit-Reset"] = str(int(reset_time.timestamp()))
             return response
 
     tm = TokenManager(db)
@@ -386,12 +411,12 @@ async def analyze_web(request: Request, target: str = Form(...), target_type: st
         else:
             remaining_limit = 10000
             
-        group_result = analyze_group(target, tm, max_members=remaining_limit)
+        group_result = analyze_group(target, tm)
         
-        if not group_result or group_result["members_analyzed"] == 0:
+        if not group_result or group_result["posts_analyzed"] == 0:
             return csrf_template_response(request, "dashboard.html", {
                 "user": user, "history": [],
-                "error": "Не удалось получить участников группы или список закрыт.",
+                "error": "Не удалось получить посты группы или стена закрыта.",
                 "progress_percent": 0, "requests_left": max(user.requests_limit - user.requests_today, 0) if user else 0,
             })
             
@@ -400,16 +425,19 @@ async def analyze_web(request: Request, target: str = Form(...), target_type: st
             user.requests_today += members_analyzed
             db.commit()
         
+        details_json = json.dumps(group_result.get("details", {}), ensure_ascii=False)
+
         record = AnalysisHistory(
             user_id=user.id if user else 0,
             target=target,
             target_type="group",
             score=None,
             risk_level="HIGH" if group_result["average_score"] > 60 else "MEDIUM" if group_result["average_score"] > 30 else "NORMAL",
-            details=json.dumps({"type": "group", "message": f"Проанализировано {members_analyzed} участников"}, ensure_ascii=False),
+            details=details_json,
             average_score=group_result["average_score"],
             score_distribution=json.dumps(group_result["distribution"], ensure_ascii=False),
-            members_analyzed=members_analyzed
+            members_analyzed=group_result["members_analyzed"],
+            created_at=datetime.now(MSK_TZ)
         )
 
     else:
@@ -431,7 +459,8 @@ async def analyze_web(request: Request, target: str = Form(...), target_type: st
             details=json.dumps(details, ensure_ascii=False),
             average_score=None,
             score_distribution=None,
-            members_analyzed=1
+            members_analyzed=1,
+            created_at=datetime.now(MSK_TZ)
         )
         
         if user:
@@ -455,10 +484,15 @@ async def history_detail(request: Request, history_id: int, db: Session = Depend
         record = db.query(AnalysisHistory).filter(AnalysisHistory.id == history_id, AnalysisHistory.user_id == user.id).first()
     if not record:
         return RedirectResponse(url="/dashboard")
+    
+    # Конвертируем время записи в московское для отображения
+    record.created_at_msk = to_msk_time(record.created_at) if record.created_at else None
+    
     return templates.TemplateResponse(request, "history_detail.html", {
         "request": request,
         "user": None if get_admin_from_cookie(request) else get_user_from_cookie(request, db),
-        "record": record, "details": json.loads(record.details)
+        "record": record, 
+        "details": json.loads(record.details) if record.details else {}
     })
 
 
@@ -535,10 +569,10 @@ async def analyze_api(
         raise HTTPException(status_code=401, detail="Требуется авторизация")
     # Проверка лимитов для обычных пользователей
     if current_user and not hasattr(current_user, 'is_admin'):
-        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-        if current_user.last_request_date is None or current_user.last_request_date.date() < today.date():
+        today = to_msk_time(datetime.utcnow()).replace(hour=0, minute=0, second=0, microsecond=0)
+        if current_user.last_request_date is None or to_msk_time(current_user.last_request_date).date() < today.date():
             current_user.requests_today = 0
-            current_user.last_request_date = datetime.utcnow()
+            current_user.last_request_date = datetime.now(MSK_TZ)
         
         if current_user.requests_today >= current_user.requests_limit:
             raise HTTPException(
@@ -554,29 +588,31 @@ async def analyze_api(
     
     try:
         if request_data.target_type == "group":
-            # Анализ группы
             remaining_limit = getattr(current_user, 'requests_limit', 10000) - getattr(current_user, 'requests_today', 0) if current_user and not hasattr(current_user, 'is_admin') else 10000
             
-            group_result = analyze_group(request_data.target, tm, max_members=remaining_limit)
+            group_result = analyze_group(request_data.target, tm)
             
-            if not group_result or group_result["members_analyzed"] == 0:
-                raise HTTPException(status_code=400, detail="Не удалось получить участников группы или список закрыт")
+            if not group_result or group_result["posts_analyzed"] == 0:
+                raise HTTPException(status_code=400, detail="Не удалось получить посты группы или стена закрыта")
             
             members_analyzed = group_result["members_analyzed"]
             if current_user and not hasattr(current_user, 'is_admin'):
                 current_user.requests_today += members_analyzed
                 db.commit()
             
+            details_json = json.dumps(group_result.get("details", {}), ensure_ascii=False)
+            
             record = AnalysisHistory(
                 user_id=getattr(current_user, 'id', 0) if current_user else 0,
                 target=request_data.target,
                 target_type="group",
                 score=None,
-                risk_level="HIGH" if group_result["average_score"] > 0 else "MEDIUM" if group_result["average_score"] > 0 else "NORMAL",
-                details=json.dumps({"type": "group", "message": f"Проанализировано {members_analyzed} участников"}, ensure_ascii=False),
+                risk_level="HIGH" if group_result["average_score"] > 60 else "MEDIUM" if group_result["average_score"] > 30 else "NORMAL",
+                details=details_json,
                 average_score=group_result["average_score"],
                 score_distribution=json.dumps(group_result["distribution"], ensure_ascii=False),
-                members_analyzed=members_analyzed
+                members_analyzed=members_analyzed,
+                created_at=datetime.now(MSK_TZ)
             )
             
             db.add(record)
@@ -596,7 +632,6 @@ async def analyze_api(
             )
             
         else:
-            # Анализ профиля
             result = analyze_user(request_data.target, tm)
             if not result:
                 raise HTTPException(status_code=400, detail="Не удалось получить данные профиля")
@@ -611,7 +646,8 @@ async def analyze_api(
                 details=json.dumps(details, ensure_ascii=False),
                 average_score=None,
                 score_distribution=None,
-                members_analyzed=1
+                members_analyzed=1,
+                created_at=datetime.now(MSK_TZ)
             )
             
             if current_user and not hasattr(current_user, 'is_admin'):
@@ -653,7 +689,6 @@ async def history_api(
     if not current_user:
         raise HTTPException(status_code=401, detail="Требуется авторизация")
     if hasattr(current_user, 'is_admin'):
-        # Для админа — пустой список (история ведётся по user_id)
         return HistoryListResponse(items=[], total=0)
     
     total = db.query(AnalysisHistory).filter(AnalysisHistory.user_id == current_user.id).count()
@@ -671,7 +706,7 @@ async def history_api(
                 target_type=item.target_type,
                 score=item.score,
                 risk_level=item.risk_level,
-                created_at=item.created_at
+                created_at=to_msk_time(item.created_at) if item.created_at else item.created_at
             ) for item in items
         ],
         total=total
@@ -688,7 +723,6 @@ async def history_detail_api(
     if not current_user:
         raise HTTPException(status_code=401, detail="Требуется авторизация")
     
-    # Админ может смотреть любые записи, пользователь — только свои
     if hasattr(current_user, 'is_admin'):
         record = db.query(AnalysisHistory).filter(AnalysisHistory.id == history_id).first()
     else:
@@ -709,7 +743,7 @@ async def history_detail_api(
         average_score=record.average_score,
         members_analyzed=record.members_analyzed,
         details=json.loads(record.details),
-        created_at=record.created_at
+        created_at=to_msk_time(record.created_at) if record.created_at else record.created_at
     )
 
 
@@ -727,17 +761,21 @@ async def get_version_api():
 async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     if not get_admin_from_cookie(request):
         return RedirectResponse(url="/", status_code=303)
+    
+    # Конвертируем время для фильтров в московское
+    today_msk = to_msk_time(datetime.utcnow()).replace(hour=0, minute=0, second=0, microsecond=0)
+    
     stats = {
         "total_users": db.query(User).count(),
-        "new_users_today": db.query(User).filter(User.created_at >= datetime.utcnow().replace(hour=0, minute=0, second=0)).count(),
-        "requests_today": db.query(AnalysisHistory).filter(AnalysisHistory.created_at >= datetime.utcnow().replace(hour=0, minute=0, second=0)).count(),
+        "new_users_today": db.query(User).filter(User.created_at >= today_msk).count(),
+        "requests_today": db.query(AnalysisHistory).filter(AnalysisHistory.created_at >= today_msk).count(),
         "total_requests": db.query(AnalysisHistory).count(),
         "avg_risk_score": int(db.query(func.avg(AnalysisHistory.score)).scalar() or 0),
         "api_load": 0,
         "active_tokens": TokenManager(db).get_tokens_count(),
     }
     recent = db.query(AnalysisHistory, User.email).join(User).order_by(AnalysisHistory.created_at.desc()).limit(10).all()
-    recent_activities = [{"created_at": h.created_at, "user_email": email, "action": "analyze", "target": h.target, "risk_level": h.risk_level} for h, email in recent]
+    recent_activities = [{"created_at": to_msk_time(h.created_at), "user_email": email, "action": "analyze", "target": h.target, "risk_level": h.risk_level} for h, email in recent]
     return templates.TemplateResponse(request, "admin_dashboard.html", {"request": request, "stats": stats, "recent_activities": recent_activities})
 
 
@@ -932,11 +970,12 @@ async def admin_metrics(request: Request, db: Session = Depends(get_db)):
     
     from sqlalchemy import func, text
     
+    # Конвертируем время в московское для группировки по часам
     hourly_stats = db.query(
         func.strftime('%H', func.datetime(AnalysisHistory.created_at, '+3 hours')).label('hour'),
         func.count(AnalysisHistory.id).label('count')
     ).filter(
-        AnalysisHistory.created_at >= datetime.utcnow() - timedelta(hours=24)
+        AnalysisHistory.created_at >= datetime.now(MSK_TZ) - timedelta(hours=24)
     ).group_by('hour').order_by('hour').all()
     
     activity_hours = [f"{h:02d}:00" for h in range(24)]
@@ -959,10 +998,10 @@ async def admin_metrics(request: Request, db: Session = Depends(get_db)):
         "api_avg_response_ms": 0,
         "users_online": 0,
         "requests_today": db.query(AnalysisHistory).filter(
-            AnalysisHistory.created_at >= datetime.utcnow().replace(hour=0)
+            AnalysisHistory.created_at >= datetime.now(MSK_TZ).replace(hour=0)
         ).count(),
         "new_users_24h": db.query(User).filter(
-            User.created_at >= datetime.utcnow() - timedelta(days=1)
+            User.created_at >= datetime.now(MSK_TZ) - timedelta(days=1)
         ).count(),
         "blocked_users": db.query(User).filter(User.is_active == False).count(),
     }
@@ -1055,9 +1094,8 @@ async def version_page(request: Request):
     version_file = BASE_DIR / "VERSION"
     build_date = "—"
     if version_file.exists():
-        msk = timezone(timedelta(hours=3))
         mtime = os.path.getmtime(version_file)
-        build_date = datetime.fromtimestamp(mtime, tz=msk).strftime("%d.%m.%Y %H:%M MSK")
+        build_date = datetime.fromtimestamp(mtime, tz=MSK_TZ).strftime("%d.%m.%Y %H:%M MSK")
     
     return templates.TemplateResponse(
         request, "version.html",

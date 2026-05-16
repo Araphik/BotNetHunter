@@ -12,11 +12,30 @@ from analyzers.profile_analyzer import ProfileAnalyzer
 from analyzers.social_graph_analyzer import SocialGraphAnalyzer
 from analyzers.behavior_analyzer import BehaviorAnalyzer
 from analyzers.cross_check_analyzer import CrossCheckAnalyzer
+from analyzers.group_post_analyzer import GroupPostAnalyzer
+from analyzers.activity_analyzer import ActivityAnalyzer
 from utils.helpers import parse_user_input
 from utils.logger import logger
+from config.settings import REQUEST_DELAY
 
 # Лок для безопасного обновления распределения в многопоточном режиме
 distribution_lock = threading.Lock()
+
+
+def _get_param_value(module_name: str, param_key: str, default: int) -> int:
+    """Получает значение параметра из БД или возвращает значение по умолчанию"""
+    try:
+        from app.database import SessionLocal
+        from app.models import ModuleParameter
+        db = SessionLocal()
+        param = db.query(ModuleParameter).filter(
+            ModuleParameter.module_name == module_name,
+            ModuleParameter.param_key == param_key
+        ).first()
+        db.close()
+        return param.param_value if param else default
+    except Exception:
+        return default
 
 
 def _analyze_single_profile_fast(profile: UserProfile, vk: VKClient) -> int:
@@ -145,77 +164,104 @@ def analyze_user(user_input: str, token_manager) -> AnalysisResult | None:
 
 
 def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict | None:
-    """Комплексный анализ группы с параллельной обработкой"""
+    """
+    Анализ группы: посты и активность под ними.
+    Списывается 1 запрос у пользователя независимо от количества постов.
+    """
     vk = VKClient(token_manager)
-    logger.info(f"Начало анализа группы {group_id}. Лимит: {max_members}")
+    logger.info(f"Начало анализа группы {group_id}")
     
-    scores = []
-    distribution = {f"{i}-{i+10}": 0 for i in range(0, 100, 10)}
-    analyzed_count = 0
+    posts_limit = _get_param_value("group_post_analyzer", "posts_limit", 100)
+    comments_limit = _get_param_value("group_post_analyzer", "comments_limit", 10000)
     
-    # 1. Получаем ID участников
-    all_member_ids = []
-    offset = 0
-    while len(all_member_ids) < max_members:
-        members_data, status = vk.get_group_members(group_id, count=100, offset=offset)
-        if status != 'ok' or not members_data or 'response' not in members_data:
-            break
-        member_ids = members_data['response']['items']
-        if not member_ids:
-            break
-        all_member_ids.extend(member_ids)
-        offset += len(member_ids)
-        if len(member_ids) < 100:
-            break
-    
-    if not all_member_ids:
-        logger.warning(f"Не удалось получить участников группы {group_id}")
+    group_data, status = vk.request('groups.getById', {'group_id': group_id})
+    if status != 'ok' or not group_data or 'response' not in group_data:
+        logger.error(f"Не удалось получить данные группы {group_id}")
         return None
+        
+    group_info = group_data['response'][0] if isinstance(group_data['response'], list) else group_data['response']
+    group_id_numeric = group_info.get('id')
+    owner_id = f"-{group_id_numeric}"
     
-    all_member_ids = all_member_ids[:max_members]
-    logger.info(f"Получено {len(all_member_ids)} участников для анализа")
+    posts_data, posts_status = vk.request('wall.get', {
+        'owner_id': owner_id,
+        'count': posts_limit,
+        'filter': 'owner'
+    })
     
-    # 2. Загружаем профили пачками
-    fields = 'screen_name,photo_200,photo_max,city,country,sex,bdate,last_seen,counters,about,interests'
-    profiles = vk.get_users_batch(all_member_ids, fields)
+    posts = []
+    if posts_status == 'ok' and posts_data and 'response' in posts_data:
+        posts = posts_data['response'].get('items', [])
     
-    if not profiles:
-        logger.error(f"Не удалось загрузить профили участников")
-        return None
+    logger.info(f"Загружено постов: {len(posts)}")
     
-    logger.info(f"Загружено {len(profiles)} профилей, начинаем анализ...")
+    post_score, post_reasons = GroupPostAnalyzer(vk).analyze(posts, group_info)
     
-    # 3. Анализируем профили параллельно
-    def analyze_worker(profile):
-        try:
-            return _analyze_single_profile_fast(profile, vk)
-        except Exception as e:
-            logger.warning(f"Ошибка анализа профиля {profile.id}: {e}")
-            return None
+    # Собираем активность по ВСЕМ постам (без искусственного ограничения)
+    posts_with_engagement = []
+    for i, post in enumerate(posts):
+        post_id = post.get('id')
+        if not post_id:
+            continue
+        
+        if i % 10 == 0:
+            logger.info(f"Обработка поста {i+1}/{len(posts)}...")
+        
+        likes_data, _ = vk.get_post_likes(owner_id, post_id, count=1000)
+        likes_count = len(likes_data.get('items', [])) if likes_data and 'response' in likes_data else 0
+        
+        comments = vk.get_post_comments_batch(owner_id, post_id, max_count=comments_limit)
+        
+        posts_with_engagement.append({
+            'id': post_id,
+            'text': post.get('text', ''),
+            'date': post.get('date'),
+            'likes': {'count': likes_count},
+            'comments': comments
+        })
+        time.sleep(REQUEST_DELAY)
     
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        futures = [executor.submit(analyze_worker, profile) for profile in profiles]
-        for future in as_completed(futures):
-            score = future.result()
-            if score is not None:
-                scores.append(score)
-                with distribution_lock:
-                    bin_idx = min(score // 10, 9)
-                    distribution[f"{bin_idx*10}-{bin_idx*10+10}"] += 1
-                analyzed_count += 1
-                if analyzed_count % 20 == 0:
-                    logger.info(f"Проанализировано {analyzed_count}/{len(profiles)}")
+    logger.info(f"Постов с активностью: {len(posts_with_engagement)}")
     
-    avg_score = round(sum(scores) / len(scores), 1) if scores else 0
-    logger.info(f"Анализ группы завершён. Средний балл: {avg_score}, участников: {analyzed_count}")
+    # Исправлено: ActivityAnalyzer вместо EngagementAnalyzer
+    activity_score, activity_reasons, activity_findings = ActivityAnalyzer(vk).analyze(
+        posts_with_engagement, 
+        owner_id=owner_id
+    )
+    
+    total_score = round(post_score * 0.6 + activity_score * 0.4)
+    all_reasons = post_reasons + activity_reasons
+    
+    total_comments = sum(len(p.get('comments', [])) for p in posts_with_engagement)
+    unique_commenters = len(set(
+        c.get('from_id') 
+        for p in posts_with_engagement 
+        for c in p.get('comments', []) 
+        if c.get('from_id') and c.get('from_id') > 0
+    ))
+    
+    details = {
+        "reasons": all_reasons,
+        "posts_analyzed": len(posts),
+        "engagement_posts": len(posts_with_engagement),
+        "total_comments": total_comments,
+        "unique_commenters": unique_commenters,
+        "findings": activity_findings
+    }
+    
+    logger.info(f"Анализ группы завершён. Скор: {total_score}, комментариев: {total_comments}, нарушений: {len(activity_findings)}")
     
     return {
         "type": "group",
         "group_id": group_id,
-        "members_analyzed": analyzed_count,
-        "average_score": avg_score,
-        "distribution": distribution,
-        "scores": scores
+        "members_analyzed": 1,
+        "average_score": total_score,
+        "distribution": {f"{i}-{i+10}": 1 if i <= total_score < i+10 else 0 for i in range(0, 100, 10)},
+        "scores": [total_score],
+        "reasons": all_reasons,
+        "posts_analyzed": len(posts),
+        "engagement_posts": len(posts_with_engagement),
+        "details": details
     }
 
 

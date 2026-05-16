@@ -28,7 +28,6 @@ class VKClient:
             return None
 
     def request(self, method, params, max_retries=None):
-        # ✅ ИСПРАВЛЕНО: используем метод вместо прямого доступа к .tokens
         if max_retries is None:
             max_retries = max(self.token_manager.get_tokens_count(), 1)
 
@@ -96,3 +95,58 @@ class VKClient:
             time.sleep(REQUEST_DELAY)  # Пауза между пачками
         
         return results
+    
+    def get_post_comments(self, owner_id: str, post_id: int, count: int = 100):
+        """Получить комментарии к посту"""
+        return self.request('wall.getComments', {
+            'owner_id': owner_id,
+            'post_id': post_id,
+            'count': count,
+            'need_likes': 0,
+            'sort': 'asc'
+        })
+
+    def get_post_likes(self, owner_id: str, post_id: int, count: int = 100):
+        """Получить лайки к посту"""
+        return self.request('likes.getList', {
+            'type': 'post',
+            'owner_id': owner_id,
+            'item_id': post_id,
+            'count': count
+        })
+    
+    def get_post_comments_batch(self, owner_id: str, post_id: int, max_count: int = 10000):
+        """Загружает комментарии к посту с пагинацией до max_count"""
+        all_comments = []
+        offset = 0
+        batch_size = 100
+        
+        while len(all_comments) < max_count:
+            remaining = max_count - len(all_comments)
+            current_batch = min(batch_size, remaining)
+            
+            data, status = self.request('wall.getComments', {
+                'owner_id': owner_id,
+                'post_id': post_id,
+                'count': current_batch,
+                'offset': offset,
+                'need_likes': 0,
+                'sort': 'asc'
+            })
+            
+            if status != 'ok' or not data or 'response' not in data:
+                break
+                
+            items = data['response'].get('items', [])
+            if not items:
+                break
+                
+            all_comments.extend(items)
+            offset += len(items)
+            
+            if len(items) < current_batch:
+                break
+                
+            time.sleep(REQUEST_DELAY)
+            
+        return all_comments[:max_count]
