@@ -46,7 +46,7 @@ DEFAULT_MODULE_WEIGHTS = {
         "description": "Настройки загрузки и анализа контента группы",
         "parameters": {
             "posts_limit": {"value": 100, "label": "Макс. постов для анализа", "min": 10, "max": 200, "step": 10, "description": "Сколько последних постов загружать со стены"},
-            "comments_limit": {"value": 10000, "label": "Макс. комментариев на пост", "min": 100, "max": 10000, "step": 100, "description": "Лимит комментариев для одного поста"},
+            "comments_limit": {"value": 100000, "label": "Макс. комментариев на пост", "min": 100, "max": 100000, "step": 100, "description": "Лимит комментариев для одного поста (с пагинацией) — 100000 = все комментарии"},
             "no_posts": {"value": 15, "label": "Штраф за отсутствие постов", "min": 5, "max": 30, "step": 1, "description": ""},
             "high_frequency": {"value": 12, "label": "Штраф за высокую частоту постов", "min": 5, "max": 25, "step": 1, "description": ""},
             "repetitive_content": {"value": 18, "label": "Штраф за повторяющийся контент", "min": 5, "max": 30, "step": 1, "description": ""},
@@ -55,7 +55,7 @@ DEFAULT_MODULE_WEIGHTS = {
             "caps_spam": {"value": 8, "label": "Штраф за CAPS/эмодзи-спам", "min": 2, "max": 15, "step": 1, "description": ""},
         }
     },
-    "engagement_analyzer": {
+    "activity_analyzer": {
         "label": "Анализ активности под постами",
         "global_weight": 0.9,
         "description": "Влияние шаблонных комментариев, быстрой активности, рекламы",
@@ -66,8 +66,8 @@ DEFAULT_MODULE_WEIGHTS = {
             "repetitive_user_comments": {"value": 12, "label": "Штраф за повторяющиеся комментарии пользователя", "min": 3, "max": 20, "step": 1, "description": ""},
             "promo_comments": {"value": 10, "label": "Штраф за рекламные фразы в комментариях", "min": 2, "max": 20, "step": 1, "description": ""},
             "low_engagement": {"value": 8, "label": "Штраф за низкую вовлеченность", "min": 2, "max": 15, "step": 1, "description": ""},
-            "new_account_activity": {"value": 10, "label": "...", "min": 2, "max": 20, "step": 1, "description": ""},
-            "coordinated_activity": {"value": 15, "label": "...", "min": 5, "max": 30, "step": 1, "description": ""},
+            "coordinated_activity": {"value": 15, "label": "Штраф за скоординированные комментарии", "min": 5, "max": 30, "step": 1, "description": ""},
+            "new_account_activity": {"value": 10, "label": "Штраф за активность нового аккаунта", "min": 2, "max": 20, "step": 1, "description": ""},
         }
     },
 }

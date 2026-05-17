@@ -6,7 +6,7 @@ HOST       ?= 127.0.0.1
 PORT       ?= 8000
 IMAGE      ?= botnethunter
 
-.PHONY: install check run db-up wait-db db-down clean init docker-build docker-up docker-up-prod docker-down docker-logs docker-shell version version-bump-patch version-bump-minor version-bump-major version-set
+.PHONY: install check run db-up wait-db db-down clean init docker-build docker-up docker-up-prod docker-down rebuild docker-logs docker-shell version version-bump-patch version-bump-minor version-bump-major version-set
 
 # — Локальная разработка —
 
@@ -59,6 +59,9 @@ docker-up-prod:
 
 docker-down:
 	docker compose down
+
+rebuild: docker-down docker-build docker-up
+	@echo "Перезапуск завершен"
 
 docker-logs:
 	docker compose logs -f

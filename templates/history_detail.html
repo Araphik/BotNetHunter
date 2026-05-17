@@ -51,25 +51,29 @@
                         </div>
                     </div>
                     
-                    {% if details.reasons and details.reasons|length > 0 %}
-                    <h5 class="mt-4">Общие признаки</h5>
-                    <ul class="list-group mb-4">
-                        {% for reason in details.reasons %}
-                            <li class="list-group-item">{{ reason }}</li>
+                    {% if details.summary and details.summary|length > 0 %}
+                    <h5 class="mt-4 mb-3">Сводка по нарушениям</h5>
+                    <div class="row g-2 mb-4">
+                        {% for item in details.summary %}
+                        <div class="col-md-6">
+                            <div class="card bg-light border-0 shadow-sm">
+                                <div class="card-body d-flex justify-content-between align-items-center py-2 px-3">
+                                    <span class="fw-medium text-dark">{{ item.label }}</span>
+                                    <span class="badge bg-warning text-dark rounded-pill fs-6">{{ item.count }}</span>
+                                </div>
+                            </div>
+                        </div>
                         {% endfor %}
-                    </ul>
+                    </div>
                     {% else %}
-                    <div class="alert alert-success">
+                    <div class="alert alert-success mb-4">
                         <strong>Нарушений не обнаружено!</strong> Контент и активность выглядят естественно.
                     </div>
                     {% endif %}
                     
-                    {# Надежная проверка findings #}
-                    {% set findings = details.findings if details.findings is defined and details.findings is not none and details.findings is iterable else [] %}
-                    
-                    {% if findings and findings|length > 0 %}
+                    {% if details.findings and details.findings|length > 0 %}
                         {% set user_findings_count = namespace(value=0) %}
-                        {% for finding in findings %}
+                        {% for finding in details.findings %}
                             {% if finding.user_id %}
                                 {% set user_findings_count.value = user_findings_count.value + 1 %}
                             {% endif %}
@@ -77,9 +81,9 @@
                         
                     <h5 class="mt-4 mb-3">Подробные нарушения у {{ user_findings_count.value }} {{ 'пользователя' if user_findings_count.value == 1 else 'пользователей' }}</h5>
                     
-                    {% for finding in findings %}
+                    {% for finding in details.findings %}
                         {% if finding.user_id %}
-                            <div class="card mb-3 border-warning">
+                            <div class="card mb-3 border-warning shadow-sm">
                                 <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
                                     <strong>Пользователь: {{ finding.user_name or 'id' + finding.user_id|string }}</strong>
                                     <span class="badge bg-warning text-dark">{{ finding.patterns|length }} нарушений</span>
@@ -139,7 +143,7 @@
                                 </div>
                             </div>
                         {% elif finding.type == 'network_coordination' and finding.groups %}
-                            <div class="card mb-3 border-info">
+                            <div class="card mb-3 border-info shadow-sm">
                                 <div class="card-header bg-info bg-opacity-10">
                                     <strong>Скоординированные комментарии</strong>
                                     <span class="badge bg-info text-dark ms-2">{{ finding.groups|length }} групп</span>
@@ -195,22 +199,7 @@
                             </div>
                         {% endif %}
                     {% endfor %}
-                    {% else %}
-                    <div class="alert alert-info mt-4">
-                        <strong>Детальных нарушений не найдено</strong><br>
-                        <small class="text-muted">
-                            Это может означать, что активность в группе выглядит естественно, 
-                            либо недостаточно данных для анализа.
-                        </small>
-                    </div>
                     {% endif %}
-                    
-                    <div class="mt-4 p-3 bg-light rounded small text-muted">
-                        <strong>Как читать оценку:</strong><br>
-                        <span class="text-success">0-30:</span> Контент и активность выглядят естественно<br>
-                        <span class="text-warning">30-60:</span> Есть признаки автоматизации или накрутки<br>
-                        <span class="text-danger">60-100:</span> Высокая вероятность бот-активности или спама
-                    </div>
                     
                 {% else %}
                     <div class="alert alert-{{ 'success' if record.risk_level == 'NORMAL' else 'warning' if record.risk_level == 'LOW' else 'danger' }} text-center">
