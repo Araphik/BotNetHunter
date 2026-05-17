@@ -30,10 +30,14 @@
                             class="form-control form-control-lg" 
                             id="target" 
                             name="target" 
-                            placeholder="durov, id1 или https://vk.com/club1"
+                            placeholder="durov, @durov или https://vk.ru/some_group"
+                            autocomplete="off"
+                            autocapitalize="none"
+                            spellcheck="false"
+                            enterkeyhint="go"
                             required
-                            pattern="^([\w.]+|id\d+|https?://vk\.com/[\w./?=&-]+)$"
-                            title="Введите username, ID (id123) или полную ссылку"
+                            pattern="^(@?[\w.]+|id\d+|club\d+|public\d+|event\d+|(https?://)?(m\.|www\.|mobile\.)?vk\.(com|ru)/[\w@./?=&%-]+)$"
+                            title="Введите username, @username, ID, club/public/event ID или ссылку VK"
                         >
                     </div>
                     
@@ -223,6 +227,7 @@ document.getElementById('analyzeForm').addEventListener('submit', function(e) {
         targetInput.classList.add('is-invalid');
         return;
     }
+    targetInput.value = value;
     
     btn.disabled = true;
     spinner.classList.remove('d-none');
