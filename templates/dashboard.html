@@ -21,7 +21,7 @@
                     </div>
                 {% endif %}
                 
-                <form method="post" action="/analyze" id="analyzeForm">
+                <form method="post" action="/analyze" id="analyzeForm" data-pending-analysis-id="{{ pending_analysis.id if pending_analysis else '' }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="mb-3">
                         <label for="target" class="form-label fw-bold">Ссылка, ID или username</label>
@@ -53,12 +53,15 @@
                     </div>
                     
                     <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary btn-lg" id="analyzeBtn">
-                            <span class="spinner-border spinner-border-sm d-none" id="analyzeSpinner" role="status"></span>
-                            Запустить проверку
+                        <button type="submit" class="btn btn-primary btn-lg {% if pending_analysis %}opacity-50{% endif %}" id="analyzeBtn" {% if pending_analysis %}disabled{% endif %}>
+                            <span class="spinner-border spinner-border-sm {% if not pending_analysis %}d-none{% endif %}" id="analyzeSpinner" role="status"></span>
+                            <span id="analyzeBtnText">{% if pending_analysis %}Анализ выполняется...{% else %}Запустить проверку{% endif %}</span>
                         </button>
                     </div>
                 </form>
+                <div class="small text-muted mt-2 {% if not pending_analysis %}d-none{% endif %}" id="analysisStatusText">
+                    Запрос принят. Результат откроется автоматически после завершения.
+                </div>
                 
                 <hr class="my-4">
                 
@@ -215,27 +218,5 @@
     </div>
 </div>
 
-<script>
-document.getElementById('analyzeForm').addEventListener('submit', function(e) {
-    const btn = document.getElementById('analyzeBtn');
-    const spinner = document.getElementById('analyzeSpinner');
-    const targetInput = document.getElementById('target');
-    
-    const value = targetInput.value.trim();
-    if (!value) {
-        e.preventDefault();
-        targetInput.classList.add('is-invalid');
-        return;
-    }
-    targetInput.value = value;
-    
-    btn.disabled = true;
-    spinner.classList.remove('d-none');
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Обработка...';
-});
-
-document.querySelectorAll('.bg-orange').forEach(el => {
-    el.style.backgroundColor = '#fd7e14';
-});
-</script>
+<script src="/static/js/dashboard.js" defer></script>
 {% endblock %}

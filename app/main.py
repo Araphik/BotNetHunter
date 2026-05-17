@@ -3,7 +3,7 @@ import json
 import asyncio
 import uuid
 from contextvars import ContextVar
-from fastapi import FastAPI, Request, Depends, Form, HTTPException, status, Query
+from fastapi import FastAPI, Request, Depends, Form, HTTPException, status, Query, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -68,6 +68,87 @@ def csrf_template_response(request, template_name: str, context: dict):
     context["csrf_token"] = token
     response = templates.TemplateResponse(request, template_name, context)
     return _set_csrf_cookie(response, new_secret)
+
+
+def wants_json_response(request: Request) -> bool:
+    accept = request.headers.get("accept", "")
+    requested_with = request.headers.get("x-requested-with", "")
+    return "application/json" in accept or requested_with == "fetch"
+
+
+def _mark_analysis_failed(db: Session, record_id: int, message: str):
+    record = db.query(AnalysisHistory).filter(AnalysisHistory.id == record_id).first()
+    if not record:
+        return
+    record.status = "failed"
+    record.details = json.dumps({"error": message}, ensure_ascii=False)
+    record.completed_at = datetime.now(MSK_TZ)
+    db.commit()
+
+
+def run_analysis_job(record_id: int):
+    db = SessionLocal()
+    try:
+        record = db.query(AnalysisHistory).filter(AnalysisHistory.id == record_id).first()
+        if not record or record.status != "pending":
+            return
+
+        tm = TokenManager(db)
+        if not tm.get_tokens_count():
+            _mark_analysis_failed(db, record_id, "Сервис временно недоступен: нет активных VK-токенов")
+            return
+
+        user = db.query(User).filter(User.id == record.user_id).first()
+
+        if record.target_type == "group":
+            group_result = analyze_group(record.target, tm)
+            if not group_result or group_result["posts_analyzed"] == 0:
+                _mark_analysis_failed(db, record_id, "Не удалось получить посты группы или стена закрыта.")
+                return
+
+            record.score = None
+            record.risk_level = "HIGH" if group_result["average_score"] > 60 else "MEDIUM" if group_result["average_score"] > 30 else "NORMAL"
+            record.details = json.dumps(group_result.get("details", {}), ensure_ascii=False)
+            record.average_score = group_result["average_score"]
+            record.score_distribution = json.dumps(group_result["distribution"], ensure_ascii=False)
+            record.members_analyzed = group_result["members_analyzed"]
+
+            if user:
+                user.requests_today += group_result["members_analyzed"]
+                user.last_request_date = datetime.now(MSK_TZ)
+        else:
+            result = analyze_user(record.target, tm)
+            if not result:
+                _mark_analysis_failed(db, record_id, "Не удалось получить данные профиля.")
+                return
+
+            record.score = result.total_score
+            record.risk_level = result.risk_level
+            record.details = json.dumps({
+                "reasons": result.reasons,
+                "anomalies": result.anomalies,
+                "profile": {
+                    "id": result.user_id,
+                    "screen_name": result.profile_data.screen_name if result.profile_data else "",
+                },
+            }, ensure_ascii=False)
+            record.average_score = None
+            record.score_distribution = None
+            record.members_analyzed = 1
+
+            if user:
+                user.requests_today += 1
+                user.last_request_date = datetime.now(MSK_TZ)
+
+        record.status = "completed"
+        record.completed_at = datetime.now(MSK_TZ)
+        db.commit()
+    except Exception as exc:
+        logger.exception(f"Ошибка фонового анализа {record_id}: {exc}")
+        db.rollback()
+        _mark_analysis_failed(db, record_id, "Внутренняя ошибка анализа.")
+    finally:
+        db.close()
 
 
 # uuid7 — если пакет не установлен, fallback на uuid4
@@ -338,6 +419,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     for h in history_raw:
         h.created_at_msk = to_msk_time(h.created_at) if h.created_at else None
         history.append(h)
+    pending_analysis = next((h for h in history if h.status == "pending"), None)
     
     progress_percent = min(user.requests_today / max(user.requests_limit, 1) * 100, 100)
     requests_left = max(user.requests_limit - user.requests_today, 0)
@@ -350,6 +432,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         "request": request, "user": user, "history": history, "error": None,
         "progress_percent": progress_percent, "requests_left": requests_left,
         "csrf_token": token,
+        "pending_analysis": pending_analysis,
     })
     _set_csrf_cookie(response, new_secret)
     
@@ -361,9 +444,16 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     return response
     
 
-@app.post("/analyze", response_class=HTMLResponse, tags=["Web UI"], include_in_schema=False)
-async def analyze_web(request: Request, target: str = Form(...), target_type: str = Form("user"), csrf_token: str = Form(...), db: Session = Depends(get_db)):
-    """HTML-интерфейс: анализ профиля/группы через форму"""
+@app.post("/analyze", tags=["Web UI"], include_in_schema=False)
+async def analyze_web(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    target: str = Form(...),
+    target_type: str = Form("user"),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """HTML-интерфейс: быстро ставит анализ в очередь и запускает его в фоне."""
     if not validate_csrf_token(request, csrf_token):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
     if get_admin_from_cookie(request):
@@ -371,6 +461,8 @@ async def analyze_web(request: Request, target: str = Form(...), target_type: st
     else:
         user = get_user_from_cookie(request, db)
         if not user:
+            if wants_json_response(request):
+                return JSONResponse({"detail": "Требуется авторизация"}, status_code=401)
             return RedirectResponse(url="/")
         
         # Конвертируем текущее время в московское для сравнения дат
@@ -380,6 +472,12 @@ async def analyze_web(request: Request, target: str = Form(...), target_type: st
             user.last_request_date = datetime.now(MSK_TZ)
         
         if user.requests_today >= user.requests_limit:
+            if wants_json_response(request):
+                return JSONResponse(
+                    {"detail": f"Лимит исчерпан ({user.requests_today}/{user.requests_limit})."},
+                    status_code=429,
+                    headers={"Retry-After": "86400"},
+                )
             history = db.query(AnalysisHistory).filter(AnalysisHistory.user_id == user.id).order_by(AnalysisHistory.created_at.desc()).limit(50).all()
             token, new_secret = generate_csrf_token(request)
             response = templates.TemplateResponse(request, "dashboard.html", {
@@ -399,78 +497,73 @@ async def analyze_web(request: Request, target: str = Form(...), target_type: st
 
     tm = TokenManager(db)
     if not tm.get_tokens_count():
+        if wants_json_response(request):
+            return JSONResponse({"detail": "Ошибка: Сервис временно недоступен"}, status_code=503)
         return csrf_template_response(request, "dashboard.html", {
             "user": user, "history": [],
             "error": "Ошибка: Сервис временно недоступен",
             "progress_percent": 0, "requests_left": max(user.requests_limit - user.requests_today, 0) if user else 0,
         })
 
-    if target_type == "group":
-        if user:
-            remaining_limit = user.requests_limit - user.requests_today
-        else:
-            remaining_limit = 10000
-            
-        group_result = analyze_group(target, tm)
-        
-        if not group_result or group_result["posts_analyzed"] == 0:
-            return csrf_template_response(request, "dashboard.html", {
-                "user": user, "history": [],
-                "error": "Не удалось получить посты группы или стена закрыта.",
-                "progress_percent": 0, "requests_left": max(user.requests_limit - user.requests_today, 0) if user else 0,
-            })
-            
-        members_analyzed = group_result["members_analyzed"]
-        if user:
-            user.requests_today += members_analyzed
-            db.commit()
-        
-        details_json = json.dumps(group_result.get("details", {}), ensure_ascii=False)
+    pending = None
+    if user:
+        pending = db.query(AnalysisHistory).filter(
+            AnalysisHistory.user_id == user.id,
+            AnalysisHistory.status == "pending",
+        ).order_by(AnalysisHistory.created_at.desc()).first()
+    if pending:
+        if wants_json_response(request):
+            return JSONResponse({"id": pending.id, "status": pending.status}, status_code=202)
+        return RedirectResponse(url="/dashboard", status_code=303)
 
-        record = AnalysisHistory(
-            user_id=user.id if user else 0,
-            target=target,
-            target_type="group",
-            score=None,
-            risk_level="HIGH" if group_result["average_score"] > 60 else "MEDIUM" if group_result["average_score"] > 30 else "NORMAL",
-            details=details_json,
-            average_score=group_result["average_score"],
-            score_distribution=json.dumps(group_result["distribution"], ensure_ascii=False),
-            members_analyzed=group_result["members_analyzed"],
-            created_at=datetime.now(MSK_TZ)
-        )
-
-    else:
-        result = analyze_user(target, tm)
-        if not result:
-            return csrf_template_response(request, "dashboard.html", {
-                "user": user, "history": [],
-                "error": "Не удалось получить данные профиля.",
-                "progress_percent": 0, "requests_left": max(user.requests_limit - user.requests_today, 0) if user else 0,
-            })
-            
-        details = {"reasons": result.reasons, "anomalies": result.anomalies, "profile": {"id": result.user_id, "screen_name": result.profile_data.screen_name if result.profile_data else ""}}
-        record = AnalysisHistory(
-            user_id=user.id if user else 0,
-            target=target,
-            target_type="user",
-            score=result.total_score,
-            risk_level=result.risk_level,
-            details=json.dumps(details, ensure_ascii=False),
-            average_score=None,
-            score_distribution=None,
-            members_analyzed=1,
-            created_at=datetime.now(MSK_TZ)
-        )
-        
-        if user:
-            user.requests_today += 1
-            db.commit()
-
+    target = target.strip()
+    target_type = target_type if target_type in {"user", "group"} else "user"
+    record = AnalysisHistory(
+        user_id=user.id if user else 0,
+        target=target,
+        target_type=target_type,
+        status="pending",
+        details=json.dumps({"message": "Анализ выполняется"}, ensure_ascii=False),
+        created_at=datetime.now(MSK_TZ),
+    )
     db.add(record)
     db.commit()
     db.refresh(record)
-    return RedirectResponse(url=f"/history/{record.id}", status_code=303)
+    background_tasks.add_task(run_analysis_job, record.id)
+
+    if wants_json_response(request):
+        return JSONResponse({"id": record.id, "status": record.status}, status_code=202)
+    return RedirectResponse(url="/dashboard", status_code=303)
+
+
+@app.get("/analysis/status/{record_id}", tags=["Web UI"], include_in_schema=False)
+async def analysis_status(record_id: int, request: Request, db: Session = Depends(get_db)):
+    if get_admin_from_cookie(request):
+        record = db.query(AnalysisHistory).filter(AnalysisHistory.id == record_id).first()
+    else:
+        user = get_user_from_cookie(request, db)
+        if not user:
+            return JSONResponse({"detail": "Требуется авторизация"}, status_code=401)
+        record = db.query(AnalysisHistory).filter(
+            AnalysisHistory.id == record_id,
+            AnalysisHistory.user_id == user.id,
+        ).first()
+    if not record:
+        return JSONResponse({"detail": "Запись не найдена"}, status_code=404)
+
+    payload = {
+        "id": record.id,
+        "status": record.status,
+        "result_url": f"/history/{record.id}" if record.status == "completed" else None,
+    }
+    return JSONResponse(
+        payload,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @app.get("/history/{history_id}", response_class=HTMLResponse, tags=["Web UI"], include_in_schema=False)
