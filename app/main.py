@@ -25,7 +25,7 @@ from config.settings import BASE_DIR, APP_VERSION
 from config.weights import DEFAULT_REQUESTS_LIMIT, DEFAULT_MODULE_WEIGHTS
 from config.settings import ADMIN_EMAIL, ADMIN_PASSWORD
 from core.token_manager import TokenManager
-from api.endpoints import analyze_user, analyze_group
+from api.endpoints import analyze_user, analyze_group, _normalize_target
 from config.settings import get_app_version
 from utils.logger import logger, request_id_var
 from app.rate_limiter import rate_limiter
@@ -429,7 +429,7 @@ async def analyze_web(request: Request, target: str = Form(...), target_type: st
 
         record = AnalysisHistory(
             user_id=user.id if user else 0,
-            target=target,
+            target=_normalize_target(target),
             target_type="group",
             score=None,
             risk_level="HIGH" if group_result["average_score"] > 60 else "MEDIUM" if group_result["average_score"] > 30 else "NORMAL",
@@ -452,7 +452,7 @@ async def analyze_web(request: Request, target: str = Form(...), target_type: st
         details = {"reasons": result.reasons, "anomalies": result.anomalies, "profile": {"id": result.user_id, "screen_name": result.profile_data.screen_name if result.profile_data else ""}}
         record = AnalysisHistory(
             user_id=user.id if user else 0,
-            target=target,
+            target=_normalize_target(target),
             target_type="user",
             score=result.total_score,
             risk_level=result.risk_level,
@@ -604,7 +604,7 @@ async def analyze_api(
             
             record = AnalysisHistory(
                 user_id=getattr(current_user, 'id', 0) if current_user else 0,
-                target=request_data.target,
+                target=_normalize_target(request_data.target),
                 target_type="group",
                 score=None,
                 risk_level="HIGH" if group_result["average_score"] > 60 else "MEDIUM" if group_result["average_score"] > 30 else "NORMAL",
@@ -639,7 +639,7 @@ async def analyze_api(
             details = {"reasons": result.reasons, "anomalies": result.anomalies, "profile": {"id": result.user_id, "screen_name": result.profile_data.screen_name if result.profile_data else ""}}
             record = AnalysisHistory(
                 user_id=getattr(current_user, 'id', 0) if current_user else 0,
-                target=request_data.target,
+                target=_normalize_target(request_data.target),
                 target_type="user",
                 score=result.total_score,
                 risk_level=result.risk_level,

@@ -35,19 +35,31 @@ def _get_param_value(module_name: str, param_key: str, default: int) -> int:
         return default
 
 
+def _normalize_target(target: str) -> str:
+    """Преобразует ссылку VK в чистый username/screen_name"""
+    # Если уже не ссылка — возвращаем как есть
+    if not target.startswith('http'):
+        return target
+    
+    # Извлекаем часть после vk.com/
+    match = re.search(r'vk\.com/([^/?#]+)', target)
+    if match:
+        return match.group(1)
+    
+    # Если не удалось распарсить — возвращаем оригинал
+    return target
+
+
 def _normalize_group_id(group_input: str) -> str:
     """Преобразует ссылку или screen_name в формат, понятный VK API"""
-    # Если уже числовой ID (возможно с минусом)
     if re.match(r'^-?\d+$', group_input):
         return group_input
     
-    # Если полная ссылка вида https://vk.com/historia или https://vk.com/club123
     if group_input.startswith('http'):
         match = re.search(r'vk\.com/([^/?#]+)', group_input)
         if match:
             return match.group(1)
     
-    # Если просто screen_name (historia, public123, club456)
     return group_input
 
 
@@ -138,12 +150,10 @@ def analyze_user(user_input: str, token_manager) -> AnalysisResult | None:
 def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict | None:
     vk = VKClient(token_manager)
     
-    # Нормализуем входной параметр: ссылка -> screen_name
     normalized_id = _normalize_group_id(group_id)
     logger.info(f"Начало анализа группы {group_id} (нормализовано: {normalized_id})")
     
     posts_limit = _get_param_value("group_post_analyzer", "posts_limit", 100)
-    # Устанавливаем высокий лимит комментариев по умолчанию = сбор всех комментариев
     comments_limit = _get_param_value("group_post_analyzer", "comments_limit", 100000)
     
     group_data, status = vk.request('groups.getById', {'group_id': normalized_id})
@@ -175,7 +185,6 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
         likes_data, _ = vk.get_post_likes(owner_id, post_id, count=1000)
         like_users = likes_data.get('items', []) if likes_data and isinstance(likes_data, dict) else []
         
-        # Собираем ВСЕ комментарии благодаря высокому лимиту
         comments = vk.get_post_comments_batch(owner_id, post_id, max_count=comments_limit)
         
         posts_with_engagement.append({
@@ -196,7 +205,6 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
     total_score = round(post_score * 0.6 + activity_score * 0.4)
     all_reasons = post_reasons + activity_reasons
     
-    # Формируем сводку нарушений с точным подсчётом скоординированных групп
     reason_counts = defaultdict(int)
     coordinated_groups_count = 0
     
@@ -210,14 +218,12 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
         elif "массовые лайки" in r_lower: reason_counts["Массовые лайки"] += 1
         elif "высокую активность" in r_lower or "нового аккаунта" in r_lower: reason_counts["Активность новых аккаунтов"] += 1
         elif "скоординированных комментариев" in r_lower:
-            # Извлекаем число групп из строки вида "Обнаружено 3 групп скоординированных комментариев"
             match = re.search(r'Обнаружено (\d+) групп', r)
             if match:
                 coordinated_groups_count = int(match.group(1))
             reason_counts["Скоординированные действия"] += 1
         elif "аномально много шаблонных" in r_lower or "повышенное количество" in r_lower: reason_counts["Общий спам в группе"] += 1
     
-    # Добавляем информацию о количестве скоординированных групп
     if coordinated_groups_count > 0:
         reason_counts["Скоординированные действия"] = f"{coordinated_groups_count} групп"
     
@@ -242,11 +248,15 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
     logger.info(f"Анализ группы завершён. Скор: {total_score}, комментариев: {total_comments}, нарушений: {len(activity_findings)}")
     
     return {
-        "type": "group", "group_id": group_id, "members_analyzed": 1,
+        "type": "group", 
+        "group_id": group_id, 
+        "members_analyzed": 1,
         "average_score": total_score,
         "distribution": {f"{i}-{i+10}": 1 if i <= total_score < i+10 else 0 for i in range(0, 100, 10)},
-        "scores": [total_score], "reasons": all_reasons,
-        "posts_analyzed": len(posts), "engagement_posts": len(posts_with_engagement),
+        "scores": [total_score], 
+        "reasons": all_reasons,
+        "posts_analyzed": len(posts), 
+        "engagement_posts": len(posts_with_engagement),
         "details": details
     }
 
