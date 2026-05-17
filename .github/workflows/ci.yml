@@ -120,6 +120,7 @@ jobs:
             .
 
       - name: Build distributive artifacts
+        if: github.event_name == 'push'
         run: |
           mkdir -p dist
           git archive \
@@ -131,11 +132,13 @@ jobs:
           sha256sum dist/* > dist/SHA256SUMS
 
       - name: Upload distributive artifacts
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: botnethunter-distributive-${{ env.APP_VERSION }}
           path: dist/
           if-no-files-found: error
+          retention-days: 1
 
   deploy-job:
     runs-on: ubuntu-latest
