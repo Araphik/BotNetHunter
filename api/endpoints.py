@@ -56,10 +56,11 @@ def _normalize_group_id(group_input: str) -> str:
         return group_input
     
     if group_input.startswith('http'):
-        match = re.search(r'vk\.com/([^/?#]+)', group_input)
+        match = re.search(r'vk\.(?:com|ru)/([^/?#]+)', group_input)
         if match:
-            return match.group(1)
-    
+            screen_name = match.group(1)
+            return screen_name
+
     return group_input
 
 
