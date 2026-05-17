@@ -11,14 +11,35 @@
         .admin-sidebar .nav-link { color: rgba(255,255,255,0.75); padding: 0.5rem 1rem; }
         .admin-sidebar .nav-link.active { color: #fff; background: rgba(255,255,255,0.1); }
         .admin-sidebar .nav-link:hover { color: #fff; }
+        .admin-mobile-bar { background: #212529; }
+        @media (max-width: 767.98px) {
+            .admin-sidebar { min-height: auto; }
+            .admin-sidebar .position-sticky { position: static !important; padding-bottom: 1rem; }
+            .admin-sidebar .nav-link { padding: 0.75rem 1rem; }
+        }
     </style>
 </head>
 <body class="bg-light">
+    <header class="admin-mobile-bar navbar navbar-dark d-md-none sticky-top px-3">
+        <button
+            class="navbar-toggler"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#adminSidebar"
+            aria-controls="adminSidebar"
+            aria-expanded="false"
+            aria-label="Открыть меню"
+        >
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <span class="navbar-brand mb-0 h1">Админ-панель</span>
+        <a href="/logout" class="btn btn-outline-light btn-sm">Выйти</a>
+    </header>
     <div class="container-fluid">
         <div class="row">
-            <nav class="col-md-3 col-lg-2 d-md-block admin-sidebar collapse">
+            <nav id="adminSidebar" class="col-12 col-md-3 col-lg-2 d-md-block admin-sidebar collapse">
                 <div class="position-sticky pt-3">
-                    <h5 class="px-3 text-white mb-4">Админ-панель</h5>
+                    <h5 class="px-3 text-white mb-4 d-none d-md-block">Админ-панель</h5>
                     <ul class="nav flex-column">
                         <li class="nav-item"><a class="nav-link {% if active_page == 'dashboard' %}active{% endif %}" href="/admin">Обзор</a></li>
                         <li class="nav-item"><a class="nav-link {% if active_page == 'weights' %}active{% endif %}" href="/admin/weights">Веса модулей</a></li>
@@ -31,7 +52,7 @@
                     </ul>
                 </div>
             </nav>
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 py-4">
+            <main class="col-12 col-md-9 ms-sm-auto col-lg-10 px-md-4 py-4">
                 {% block content %}{% endblock %}
             </main>
         </div>
