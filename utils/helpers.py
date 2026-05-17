@@ -9,7 +9,16 @@ def parse_user_input(user_input):
 
     parsed = urlparse(user_input if "://" in user_input else f"https://{user_input}")
     host = parsed.netloc.lower()
-    if host in {"vk.com", "www.vk.com", "m.vk.com", "mobile.vk.com"}:
+    if host in {
+        "vk.com",
+        "www.vk.com",
+        "m.vk.com",
+        "mobile.vk.com",
+        "vk.ru",
+        "www.vk.ru",
+        "m.vk.ru",
+        "mobile.vk.ru",
+    }:
         path_parts = [part for part in parsed.path.split("/") if part]
         if path_parts:
             user_input = path_parts[0]
