@@ -14,7 +14,7 @@ from analyzers.behavior_analyzer import BehaviorAnalyzer
 from analyzers.cross_check_analyzer import CrossCheckAnalyzer
 from analyzers.group_post_analyzer import GroupPostAnalyzer
 from analyzers.activity_analyzer import ActivityAnalyzer
-from utils.helpers import parse_user_input
+from utils.helpers import parse_group_input, parse_user_input
 from utils.logger import logger
 from config.settings import REQUEST_DELAY
 
@@ -169,6 +169,7 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
     Списывается 1 запрос у пользователя независимо от количества постов.
     """
     vk = VKClient(token_manager)
+    group_id = parse_group_input(group_id)
     logger.info(f"Начало анализа группы {group_id}")
     
     posts_limit = _get_param_value("group_post_analyzer", "posts_limit", 100)

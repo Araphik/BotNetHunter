@@ -29,6 +29,18 @@ def parse_user_input(user_input):
     return user_input
 
 
+def parse_group_input(group_input):
+    group_input = parse_user_input(group_input)
+    lowered = group_input.lower()
+    if lowered.startswith("club") and lowered[4:].isdigit():
+        return lowered[4:]
+    if lowered.startswith("public") and lowered[6:].isdigit():
+        return lowered[6:]
+    if lowered.startswith("event") and lowered[5:].isdigit():
+        return lowered[5:]
+    return group_input
+
+
 def format_score(score, max_score=100):
     if score >= 70:
         return f'{score}/{max_score} — ВЫСОКИЙ риск'
