@@ -123,7 +123,7 @@ BotNetHunter - веб-приложение для анализа профиле�
 | `target` | ID, короткое имя или ссылка на профиль/группу ВКонтакте |
 | `target_type` | Тип цели: `user` для профиля или `group` для сообщества |
 
-Подробное описание API: [`docs/api/README.md`](docs/api/README.md)
+Подробное описание API: [Swagger UI](https://botnethunter.duckdns.org/api-docs), [`docs/api/README.md`](docs/api/README.md)
 
 #### Описание ошибок
 

@@ -8,8 +8,10 @@
 
 ## API документация
 
-Полное описание API доступно в формате OpenAPI:  
-[swagger.yaml](swagger.yaml)
+Полное описание API доступно в Swagger UI:
+[https://botnethunter.duckdns.org/api-docs](https://botnethunter.duckdns.org/api-docs)
+
+Исходная OpenAPI-спецификация хранится в файле [swagger.yaml](swagger.yaml).
 ---
 
 ## Основные endpoints

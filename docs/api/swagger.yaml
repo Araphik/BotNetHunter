@@ -36,6 +36,8 @@ info:
     - `timestamp` — метка времени в формате UTC (ISO 8601).
 
 servers:
+  - url: https://botnethunter.duckdns.org
+    description: Production (через Nginx reverse proxy)
   - url: http://localhost:8000
     description: Локальная разработка (без Nginx, напрямую к Uvicorn)
   - url: http://localhost:80

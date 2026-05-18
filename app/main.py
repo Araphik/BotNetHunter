@@ -4,9 +4,10 @@ import asyncio
 import uuid
 from contextvars import ContextVar
 from fastapi import FastAPI, Request, Depends, Form, HTTPException, status, Query, BackgroundTasks
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy import func, inspect, text
@@ -226,6 +227,23 @@ security = HTTPBearer(auto_error=False)
 @app.get("/health", tags=["Service"])
 async def health():
     return {"status": "ok", "service": "botnethunter", "version": APP_VERSION}
+
+
+@app.get("/api-docs", response_class=HTMLResponse, tags=["API Docs"], include_in_schema=False)
+async def api_docs():
+    return get_swagger_ui_html(
+        openapi_url="/api-docs/openapi.yaml",
+        title="BotNetHunter API Docs",
+    )
+
+
+@app.get("/api-docs/openapi.yaml", tags=["API Docs"], include_in_schema=False)
+async def api_docs_openapi_yaml():
+    return FileResponse(
+        BASE_DIR / "docs" / "api" / "swagger.yaml",
+        media_type="application/yaml",
+        filename="swagger.yaml",
+    )
 
 
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ 
