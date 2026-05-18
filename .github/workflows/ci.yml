@@ -183,12 +183,13 @@ jobs:
 
       - name: Upload distributive artifacts
         if: github.event_name == 'push'
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: botnethunter-distributive-${{ env.APP_VERSION }}
           path: dist/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
 
   sast-sonarqube-job:
     runs-on: ubuntu-latest
@@ -245,12 +246,13 @@ jobs:
 
       - name: Upload SonarQube SAST report
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: sonarqube-critical-vulnerabilities-report
           path: reports/
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 1
 
   container-scan-trivy-job:
     runs-on: ubuntu-latest
@@ -292,6 +294,7 @@ jobs:
 
       - name: Upload Trivy container scanning reports
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: trivy-container-scanning-report
@@ -299,7 +302,7 @@ jobs:
             trivy-image-report.json
             trivy-image-report.sarif
           if-no-files-found: ignore
-          retention-days: 30
+          retention-days: 1
 
   release-job:
     runs-on: ubuntu-latest
