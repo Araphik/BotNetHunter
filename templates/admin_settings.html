@@ -1,0 +1,199 @@
+{% extends "admin_base.html" %}
+{% block title %}Настройки анализа{% endblock %}
+{% set active_page = 'settings' %}
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4 border-bottom">
+    <div>
+        <h1 class="h2 mb-1">Настройки анализа</h1>
+        <p class="text-muted mb-0 small">Конфигурация параметров выявления нарушений и весовых коэффициентов</p>
+    </div>
+    <div class="btn-toolbar">
+        <a href="/logout" class="btn btn-outline-secondary btn-sm">Выйти</a>
+    </div>
+</div>
+
+<form method="post" action="/admin/settings/save" id="settingsForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    
+    <!-- 1. Параметры анализа и выявления нарушений -->
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0 fw-bold">1. Параметры анализа и выявления нарушений</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <label class="form-label fw-medium">Порог схожести комментариев (%)</label>
+                    <input type="number" step="1" min="0" max="100" name="similarity_threshold" value="{{ settings.similarity_threshold }}" class="form-control" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-medium">Минимальное количество повторений для выявления</label>
+                    <input type="number" step="1" min="1" name="count_repetitive" value="{{ settings.count_repetitive }}" class="form-control" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-medium">Порог массовых отметок "Нравится" (%)</label>
+                    <input type="number" step="1" min="1" max="100" name="percent_liked" value="{{ settings.percent_liked }}" class="form-control" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-medium">Временное окно быстрой серии комментариев (мин)</label>
+                    <input type="number" step="1" min="1" name="rapid_comment_window_min" value="{{ settings.rapid_comment_window_min }}" class="form-control" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-medium">Комментариев в окне для выявления серии</label>
+                    <input type="number" step="1" min="1" name="comments_per_time_window" value="{{ settings.comments_per_time_window }}" class="form-control" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-medium">Минимальное число пользователей для выявления координации</label>
+                    <input type="number" step="1" min="2" name="cross_user_min_group_size" value="{{ settings.cross_user_min_group_size }}" class="form-control" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Порог активности нового аккаунта (действий)</label>
+                    <input type="number" step="1" min="1" name="new_acc_activity" value="{{ settings.new_acc_activity }}" class="form-control" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Порог ID для определения нового аккаунта</label>
+                    <input type="number" step="1" min="1000000" name="new_acc_id_threshold" value="{{ settings.new_acc_id_threshold }}" class="form-control" required>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Штрафы за активность под публикациями -->
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0 fw-bold">2. Весовые коэффициенты нарушений активности</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <label class="form-label">Массовые отметки "Нравится"</label>
+                    <input type="number" step="1" min="0" name="penalty_mass_likes" value="{{ settings.penalty_mass_likes }}" class="form-control" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Повторяющиеся комментарии</label>
+                    <input type="number" step="1" min="0" name="penalty_repetitive" value="{{ settings.penalty_repetitive }}" class="form-control" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Шаблонные комментарии</label>
+                    <input type="number" step="1" min="0" name="penalty_generic" value="{{ settings.penalty_generic }}" class="form-control" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Быстрая серия комментариев (за серию)</label>
+                    <input type="number" step="1" min="0" name="penalty_rapid" value="{{ settings.penalty_rapid }}" class="form-control" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Строгий интервал публикации (за серию)</label>
+                    <input type="number" step="1" min="0" name="penalty_regular" value="{{ settings.penalty_regular }}" class="form-control" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Ночная активность</label>
+                    <input type="number" step="1" min="0" name="penalty_night" value="{{ settings.penalty_night }}" class="form-control" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Активность нового аккаунта</label>
+                    <input type="number" step="1" min="0" name="penalty_new_acc" value="{{ settings.penalty_new_acc }}" class="form-control" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Скоординированная активность (за группу)</label>
+                    <input type="number" step="1" min="0" name="penalty_coordination" value="{{ settings.penalty_coordination }}" class="form-control" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Высокая доля шаблонных комментариев (>70%)</label>
+                    <input type="number" step="1" min="0" name="penalty_global_spam" value="{{ settings.penalty_global_spam }}" class="form-control" required>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Штрафы за публикации группы -->
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0 fw-bold">3. Весовые коэффициенты нарушений в публикациях группы</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-4">
+                <div class="col-md-3">
+                    <label class="form-label">Высокая частота публикаций</label>
+                    <input type="number" step="1" min="0" name="penalty_high_freq" value="{{ settings.penalty_high_freq }}" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Повторяющийся контент</label>
+                    <input type="number" step="1" min="0" name="penalty_repetitive_content" value="{{ settings.penalty_repetitive_content }}" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Публикации с внешними ссылками</label>
+                    <input type="number" step="1" min="0" name="penalty_link_spam" value="{{ settings.penalty_link_spam }}" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Ночные публикации</label>
+                    <input type="number" step="1" min="0" name="penalty_night_posting" value="{{ settings.penalty_night_posting }}" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Использование заглавных букв</label>
+                    <input type="number" step="1" min="0" name="penalty_caps" value="{{ settings.penalty_caps }}" class="form-control" required>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Штрафы за профиль нарушителя -->
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0 fw-bold">4. Весовые коэффициенты нарушений профиля</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-4">
+                <div class="col-md-3">
+                    <label class="form-label">Новый аккаунт (после 2024 г.)</label>
+                    <input type="number" step="1" min="0" name="penalty_prof_new_2024" value="{{ settings.penalty_prof_new_2024 }}" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Новый аккаунт (2022–2024 гг.)</label>
+                    <input type="number" step="1" min="0" name="penalty_prof_new_2022" value="{{ settings.penalty_prof_new_2022 }}" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Отсутствие фотографии профиля</label>
+                    <input type="number" step="1" min="0" name="penalty_prof_no_photo" value="{{ settings.penalty_prof_no_photo }}" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Полностью незаполненный профиль (0/4)</label>
+                    <input type="number" step="1" min="0" name="penalty_prof_empty_0" value="{{ settings.penalty_prof_empty_0 }}" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Частично незаполненный профиль (1/4)</label>
+                    <input type="number" step="1" min="0" name="penalty_prof_empty_1" value="{{ settings.penalty_prof_empty_1 }}" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Отсутствие друзей (0)</label>
+                    <input type="number" step="1" min="0" name="penalty_prof_0_friends" value="{{ settings.penalty_prof_0_friends }}" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Малое количество друзей (<10)</label>
+                    <input type="number" step="1" min="0" name="penalty_prof_low_friends" value="{{ settings.penalty_prof_low_friends }}" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Географическое несоответствие друзей</label>
+                    <input type="number" step="1" min="0" name="penalty_prof_geo_anomaly" value="{{ settings.penalty_prof_geo_anomaly }}" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Ключевые слова автоматизации в имени</label>
+                    <input type="number" step="1" min="0" name="penalty_prof_bot_name" value="{{ settings.penalty_prof_bot_name }}" class="form-control" required>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-3 mb-5 pt-3 border-top">
+        <a href="/admin" class="btn btn-outline-secondary px-4">Отмена</a>
+        <button type="submit" class="btn btn-primary px-5">Сохранить настройки</button>
+    </div>
+</form>
+
+{% if request.query_params.get('saved') == '1' %}
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div class="toast show bg-success text-white" role="alert">
+        <div class="toast-body">Настройки успешно сохранены</div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

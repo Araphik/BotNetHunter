@@ -23,7 +23,7 @@ from app.auth import (
     get_totp_uri, verify_totp, create_temp_2fa_token, decode_temp_2fa_token
 )
 from config.settings import BASE_DIR, APP_VERSION
-from config.weights import DEFAULT_REQUESTS_LIMIT, DEFAULT_MODULE_WEIGHTS
+from config.weights import DEFAULT_REQUESTS_LIMIT
 from config.settings import ADMIN_EMAIL, ADMIN_PASSWORD
 from core.token_manager import TokenManager
 from api.endpoints import analyze_user, analyze_group, _normalize_target
@@ -886,129 +886,88 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request, "admin_dashboard.html", {"request": request, "stats": stats, "recent_activities": recent_activities})
 
 
-@app.get("/admin/weights", response_class=HTMLResponse, tags=["Admin UI"], include_in_schema=False)
-async def admin_weights(request: Request, db: Session = Depends(get_db)):
+DEFAULT_SETTINGS = {
+    # Параметры анализа и выявления нарушений
+    'similarity_threshold': 85, 
+    'count_repetitive': 3, 
+    'rapid_comment_window_min': 3,
+    'comments_per_time_window': 5, 
+    'regular_interval_tolerance_sec': 10, 
+    'min_interval_for_regular_check': 30,
+    'percent_liked': 80, 
+    'cross_user_min_group_size': 3, 
+    'new_acc_activity': 15, 
+    'new_acc_id_threshold': 850_000_000,
+    # Штрафы за активность под публикациями
+    'penalty_mass_likes': 10, 'penalty_repetitive': 12, 'penalty_generic': 8, 'penalty_rapid': 15,
+    'penalty_regular': 10, 'penalty_night': 8, 'penalty_new_acc': 10, 'penalty_coordination': 15, 'penalty_global_spam': 20,
+    # Штрафы за публикации группы
+    'penalty_high_freq': 12, 'penalty_repetitive_content': 18, 'penalty_link_spam': 10,
+    'penalty_night_posting': 10, 'penalty_caps': 8,
+    # Штрафы за профиль нарушителя
+    'penalty_prof_new_2024': 20, 'penalty_prof_new_2022': 12, 'penalty_prof_no_photo': 18,
+    'penalty_prof_empty_0': 25, 'penalty_prof_empty_1': 15, 'penalty_prof_0_friends': 10,
+    'penalty_prof_low_friends': 5, 'penalty_prof_geo_anomaly': 20, 'penalty_prof_bot_name': 15
+}
+
+def _get_admin_settings(db: Session):
+    """Получает текущие настройки из БД"""
+    current = dict(DEFAULT_SETTINGS)
+    try:
+        db_settings = db.query(AdminSettings).filter(AdminSettings.key.like('setting_%')).all()
+        for s in db_settings:
+            # Убираем префикс для маппинга на DEFAULT_SETTINGS
+            key = s.key.replace('setting_', '')
+            if key in current:
+                try: 
+                    val = float(s.value)
+                    # Если это порог схожести, умножаем на 100 для UI
+                    if key == 'similarity_threshold':
+                        val = val * 100
+                    current[key] = val
+                except: pass
+    except: pass
+    return current
+
+@app.get("/admin/settings", response_class=HTMLResponse, tags=["Admin UI"], include_in_schema=False)
+async def admin_settings_page(request: Request, db: Session = Depends(get_db)):
     if not get_admin_from_cookie(request):
         return RedirectResponse(url="/", status_code=303)
-    weights = {k: v.copy() for k, v in DEFAULT_MODULE_WEIGHTS.items()}
-    db_weights = db.query(AdminSettings).filter(AdminSettings.key.like("weight_%")).all()
-    for w in db_weights:
-        key = w.key.replace("weight_", "")
-        if key in weights:
-            try:
-                weights[key]["global_weight"] = json.loads(w.value).get("global_weight", weights[key]["global_weight"])
-            except Exception:
-                pass
-    return csrf_template_response(request, "admin_weights.html", {
-        "request": request, "weights": weights,
-        "weights_json": json.dumps(weights, indent=2, ensure_ascii=False),
-    })
+    settings = _get_admin_settings(db)
+    return csrf_template_response(request, "admin_settings.html", {"request": request, "settings": settings})
 
-
-@app.post("/admin/weights/save", tags=["Admin UI"], include_in_schema=False)
-async def admin_weights_save(request: Request, profile_analyzer: float = Form(1.0), social_graph_analyzer: float = Form(1.2), behavior_analyzer: float = Form(0.9), cross_check_analyzer: float = Form(1.1), csrf_token: str = Form(...), db: Session = Depends(get_db)):
+@app.post("/admin/settings/save", tags=["Admin UI"], include_in_schema=False)
+async def admin_settings_save(request: Request, db: Session = Depends(get_db)):
     if not get_admin_from_cookie(request):
         return RedirectResponse(url="/", status_code=303)
-    if not validate_csrf_token(request, csrf_token):
-        raise HTTPException(status_code=403, detail="Invalid CSRF token")
-    weights = {"profile_analyzer": profile_analyzer, "social_graph_analyzer": social_graph_analyzer, "behavior_analyzer": behavior_analyzer, "cross_check_analyzer": cross_check_analyzer}
-    for key, value in weights.items():
-        setting = db.query(AdminSettings).filter(AdminSettings.key == f"weight_{key}").first()
-        if setting:
-            setting.value = json.dumps({"global_weight": value})
-        else:
-            db.add(AdminSettings(key=f"weight_{key}", value=json.dumps({"global_weight": value})))
-    db.commit()
-    return RedirectResponse(url="/admin/weights?saved=1", status_code=303)
-
-
-@app.get("/admin/weights/reset", tags=["Admin UI"], include_in_schema=False)
-async def admin_weights_reset(request: Request, db: Session = Depends(get_db)):
-    if not get_admin_from_cookie(request):
-        return RedirectResponse(url="/", status_code=303)
-    db.query(AdminSettings).filter(AdminSettings.key.like("weight_%")).delete()
-    db.commit()
-    return RedirectResponse(url="/admin/weights", status_code=303)
-
-
-@app.get("/admin/weights/parameters", response_class=HTMLResponse, tags=["Admin UI"], include_in_schema=False)
-async def admin_parameters(request: Request, db: Session = Depends(get_db)):
-    if not get_admin_from_cookie(request):
-        return RedirectResponse(url="/", status_code=303)
-    modules = {k: v.copy() for k, v in DEFAULT_MODULE_WEIGHTS.items()}
-    db_params = db.query(ModuleParameter).all()
-    for p in db_params:
-        if p.module_name in modules and p.param_key in modules[p.module_name]["parameters"]:
-            modules[p.module_name]["parameters"][p.param_key]["value"] = p.param_value
-    db_weights = db.query(AdminSettings).filter(AdminSettings.key.like("weight_%")).all()
-    for w in db_weights:
-        key = w.key.replace("weight_", "")
-        if key in modules:
-            try:
-                modules[key]["global_weight"] = json.loads(w.value).get("global_weight", modules[key]["global_weight"])
-            except Exception:
-                pass
-    return csrf_template_response(request, "admin_parameters.html", {
-        "request": request, "modules": modules,
-        "modules_json": json.dumps(modules, indent=2, ensure_ascii=False),
-    })
-
-
-@app.post("/admin/weights/parameters/save", tags=["Admin UI"], include_in_schema=False)
-async def admin_parameters_save(request: Request, db: Session = Depends(get_db)):
-    if not get_admin_from_cookie(request):
-        return RedirectResponse(url="/", status_code=303)
-
+    
     form_data = await request.form()
     csrf_token = form_data.get("csrf_token", "")
     if not validate_csrf_token(request, csrf_token):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
-    
-    for key, value in form_data.items():
-        if key.startswith("param_") and key.endswith("_value"):
-            cleaned = key.replace("param_", "").replace("_value", "")
-            parts = cleaned.rsplit("_", 1)
-            if len(parts) != 2:
-                continue
-            module_name, param_key = parts
-            if module_name not in DEFAULT_MODULE_WEIGHTS or param_key not in DEFAULT_MODULE_WEIGHTS[module_name]["parameters"]:
-                continue
-            try:
-                int_value = int(float(value))
-            except ValueError:
-                continue
 
-            param = db.query(ModuleParameter).filter(ModuleParameter.module_name == module_name, ModuleParameter.param_key == param_key).first()
-            if param:
-                param.param_value = int_value
-            else:
-                db.add(ModuleParameter(module_name=module_name, param_key=param_key, param_value=int_value))
-
-    for module_name in DEFAULT_MODULE_WEIGHTS.keys():
-        gw_key = f"global_weight_{module_name}"
-        if gw_key in form_data:
+    for key, default_val in DEFAULT_SETTINGS.items():
+        val = form_data.get(key)
+        if val is not None:
             try:
-                gw_value = float(form_data[gw_key])
-                setting = db.query(AdminSettings).filter(AdminSettings.key == f"weight_{module_name}").first()
+                val_float = float(val)
+                # Если это порог схожести, делим на 100 для хранения (0.85)
+                if key == 'similarity_threshold':
+                    val_float = val_float / 100.0
+                    
+                db_key = f"setting_{key}"
+                setting = db.query(AdminSettings).filter(AdminSettings.key == db_key).first()
                 if setting:
-                    setting.value = json.dumps({"global_weight": gw_value})
+                    setting.value = str(val_float)
                 else:
-                    db.add(AdminSettings(key=f"weight_{module_name}", value=json.dumps({"global_weight": gw_value})))
+                    db.add(AdminSettings(key=db_key, value=str(val_float)))
             except ValueError:
                 pass
-
+    
     db.commit()
-    return RedirectResponse(url="/admin/weights/parameters?saved=1", status_code=303)
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
 
 
-@app.get("/admin/weights/parameters/reset", tags=["Admin UI"], include_in_schema=False)
-async def admin_parameters_reset(request: Request, db: Session = Depends(get_db)):
-    if not get_admin_from_cookie(request):
-        return RedirectResponse(url="/", status_code=303)
-    db.query(ModuleParameter).delete()
-    db.query(AdminSettings).filter(AdminSettings.key.like("weight_%")).delete()
-    db.commit()
-    return RedirectResponse(url="/admin/weights/parameters", status_code=303)
 
 
 @app.get("/admin/users", response_class=HTMLResponse, tags=["Admin UI"], include_in_schema=False)

@@ -21,7 +21,7 @@ REQUEST_DELAY = float(os.getenv('REQUEST_DELAY', '0.35'))
 FLOOD_WAIT = int(os.getenv('FLOOD_WAIT', '3'))
 MAX_FRIENDS_ANALYZE = int(os.getenv('MAX_FRIENDS_ANALYZE', '100'))
 
-VK_TOKENS = []  # Заглушка, не используется
+VK_TOKENS = []
 
 # Auth & DB
 SECRET_KEY = os.getenv('SECRET_KEY')

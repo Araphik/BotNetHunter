@@ -1,229 +1,201 @@
 {% extends "base.html" %}
 {% block title %}Отчёт #{{ record.id }}{% endblock %}
-
 {% block content %}
 <div class="row">
-    <div class="col-md-8 mx-auto">
+    <div class="col-md-10 mx-auto">
         <div class="card shadow">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">
-                    {% if record.target_type == 'group' %}Группа: {{ record.target }}{% else %}Профиль: @{{ details.profile.screen_name }}{% endif %}
-                </h5>
+                <h5 class="mb-0">Группа: {{ record.target }}</h5>
                 <a href="/dashboard" class="btn btn-sm btn-secondary">Назад</a>
             </div>
             <div class="card-body">
                 <div class="row mb-3">
                     <div class="col-md-4"><strong>Цель:</strong> {{ record.target }}</div>
-                    <div class="col-md-4"><strong>Тип:</strong> {{ 'Группа' if record.target_type == 'group' else 'Профиль' }}</div>
                     <div class="col-md-4"><strong>Дата:</strong> {{ record.created_at_msk.strftime('%d.%m.%Y %H:%M') if record.created_at_msk else record.created_at.strftime('%d.%m.%Y %H:%M') }}</div>
+                    <div class="col-md-4"><strong>Оценка группы:</strong> 
+                        <span class="fw-bold {% if record.average_score > 60 %}text-danger{% elif record.average_score > 30 %}text-warning{% else %}text-success{% endif %}">
+                            {{ record.average_score }}/100
+                        </span>
+                    </div>
                 </div>
-
-                {% if record.target_type == 'group' %}
-                    <div class="alert alert-info text-center">
-                        <h4 class="mb-0">Оценка риска: <span class="fw-bold {% if record.average_score > 60 %}text-danger{% elif record.average_score > 30 %}text-warning{% else %}text-success{% endif %}">{{ record.average_score }}/100</span></h4>
-                        <small>Постов проанализировано: {{ details.posts_analyzed or 0 }}</small>
-                    </div>
-                    
-                    <div class="row mb-4">
-                        <div class="col-md-4">
-                            <div class="card bg-light">
-                                <div class="card-body text-center">
-                                    <h6 class="text-muted mb-1">Постов</h6>
-                                    <h3 class="mb-0">{{ details.posts_analyzed or 0 }}</h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="card bg-light">
-                                <div class="card-body text-center">
-                                    <h6 class="text-muted mb-1">С комментариями</h6>
-                                    <h3 class="mb-0">{{ details.engagement_posts or 0 }}</h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="card bg-light">
-                                <div class="card-body text-center">
-                                    <h6 class="text-muted mb-1">Комментариев</h6>
-                                    <h3 class="mb-0">{{ details.total_comments or 0 }}</h3>
-                                </div>
+                
+                <div class="alert alert-info text-center">
+                    <small>Постов проанализировано: {{ details.posts_analyzed or 0 }} | Комментариев: {{ details.total_comments or 0 }}</small>
+                </div>
+                
+                {% if details.summary and details.summary|length > 0 %}
+                <h5 class="mt-4 mb-3">Сводка по нарушениям</h5>
+                <div class="row g-2 mb-4">
+                    {% for item in details.summary %}
+                    <div class="col-md-6">
+                        <div class="card bg-light border-0 shadow-sm">
+                            <div class="card-body d-flex justify-content-between align-items-center py-2 px-3">
+                                <span class="fw-medium text-dark">{{ item.label }}</span>
+                                <span class="badge bg-warning text-dark rounded-pill fs-6">{{ item.count }}</span>
                             </div>
                         </div>
                     </div>
-                    
-                    {% if details.summary and details.summary|length > 0 %}
-                    <h5 class="mt-4 mb-3">Сводка по нарушениям</h5>
-                    <div class="row g-2 mb-4">
-                        {% for item in details.summary %}
-                        <div class="col-md-6">
-                            <div class="card bg-light border-0 shadow-sm">
-                                <div class="card-body d-flex justify-content-between align-items-center py-2 px-3">
-                                    <span class="fw-medium text-dark">{{ item.label }}</span>
-                                    <span class="badge bg-warning text-dark rounded-pill fs-6">{{ item.count }}</span>
-                                </div>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                    {% else %}
-                    <div class="alert alert-success mb-4">
-                        <strong>Нарушений не обнаружено!</strong> Контент и активность выглядят естественно.
-                    </div>
-                    {% endif %}
-                    
-                    {% if details.findings and details.findings|length > 0 %}
-                        {% set user_findings_count = namespace(value=0) %}
-                        {% for finding in details.findings %}
-                            {% if finding.user_id %}
-                                {% set user_findings_count.value = user_findings_count.value + 1 %}
-                            {% endif %}
-                        {% endfor %}
-                        
-                    <h5 class="mt-4 mb-3">Подробные нарушения у {{ user_findings_count.value }} {{ 'пользователя' if user_findings_count.value == 1 else 'пользователей' }}</h5>
-                    
-                    {% for finding in details.findings %}
-                        {% if finding.user_id %}
-                            <div class="card mb-3 border-warning shadow-sm">
-                                <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
-                                    <strong>Пользователь: {{ finding.user_name or 'id' + finding.user_id|string }}</strong>
-                                    <span class="badge bg-warning text-dark">{{ finding.patterns|length }} нарушений</span>
-                                </div>
-                                <div class="card-body p-0">
-                                    {% for pattern in finding.patterns %}
-                                    <div class="accordion accordion-flush" id="acc-{{ finding.user_id }}-{{ loop.index }}">
-                                        <div class="accordion-item">
-                                            <h2 class="accordion-header">
-                                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
-                                                        data-bs-target="#collapse-{{ finding.user_id }}-{{ loop.index }}" style="cursor: pointer;">
-                                                    <span class="badge bg-{{ 'danger' if pattern.severity == 'HIGH' else 'warning' if pattern.severity == 'MEDIUM' else 'info' }} me-2">{{ pattern.severity }}</span>
-                                                    <span class="flex-grow-1">{{ pattern.summary }}</span>
-                                                </button>
-                                            </h2>
-                                            <div id="collapse-{{ finding.user_id }}-{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#acc-{{ finding.user_id }}-{{ loop.index }}">
-                                                <div class="accordion-body">
-                                                    {% for example in pattern.examples %}
-                                                        {% if example.pattern %}
-                                                            <div class="alert alert-light mb-3">
-                                                                <p class="mb-2"><strong>Шаблон:</strong> <code class="text-break">{{ example.pattern }}</code></p>
-                                                                <p class="mb-0 text-muted small">Повторов: {{ example.count }}</p>
-                                                            </div>
-                                                        {% endif %}
-                                                        {% if example.instances and example.instances|length > 0 %}
-                                                        <div class="table-responsive">
-                                                            <table class="table table-sm table-striped table-hover">
-                                                                <thead class="table-light">
-                                                                    <tr>
-                                                                        <th style="width: 20%;">Время</th>
-                                                                        <th style="width: 50%;">Текст</th>
-                                                                        <th style="width: 30%;">Ссылка</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody>
-                                                                {% for inst in example.instances %}
-                                                                    <tr>
-                                                                        <td class="small text-nowrap">{{ inst.time }}</td>
-                                                                        <td class="small text-break">{{ inst.text }}</td>
-                                                                        <td>
-                                                                            <a href="{{ inst.link }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">
-                                                                                Открыть
-                                                                            </a>
-                                                                        </td>
-                                                                    </tr>
-                                                                {% endfor %}
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                        {% endif %}
-                                                    {% endfor %}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                            </div>
-                        {% elif finding.type == 'network_coordination' and finding.groups %}
-                            <div class="card mb-3 border-info shadow-sm">
-                                <div class="card-header bg-info bg-opacity-10">
-                                    <strong>Скоординированные комментарии</strong>
-                                    <span class="badge bg-info text-dark ms-2">{{ finding.groups|length }} групп</span>
-                                </div>
-                                <div class="card-body p-0">
-                                    {% for group in finding.groups %}
-                                    <div class="accordion accordion-flush" id="acc-net-{{ loop.index }}">
-                                        <div class="accordion-item">
-                                            <h2 class="accordion-header">
-                                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
-                                                        data-bs-target="#collapse-net-{{ loop.index }}" style="cursor: pointer;">
-                                                    <span class="flex-grow-1">Группа из {{ group.users|length }} пользователей</span>
-                                                    <small class="text-muted ms-2">"{{ group.pattern[:50] }}..."</small>
-                                                </button>
-                                            </h2>
-                                            <div id="collapse-net-{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#acc-net-{{ loop.index }}">
-                                                <div class="accordion-body">
-                                                    <p class="mb-3"><strong>Участники:</strong> 
-                                                        {% for uid in group.users %}<span class="badge bg-secondary me-1">id{{ uid }}</span>{% endfor %}
-                                                    </p>
-                                                    <div class="table-responsive">
-                                                        <table class="table table-sm table-striped table-hover">
-                                                            <thead class="table-light">
-                                                                <tr>
-                                                                    <th>Пользователь</th>
-                                                                    <th>Время</th>
-                                                                    <th>Текст</th>
-                                                                    <th>Ссылка</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                            {% for ex in group.examples %}
-                                                                <tr>
-                                                                    <td><code>id{{ ex.user_id }}</code></td>
-                                                                    <td class="small text-nowrap">{{ ex.time }}</td>
-                                                                    <td class="small text-break">{{ ex.text }}</td>
-                                                                    <td>
-                                                                        <a href="{{ ex.link }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">
-                                                                            Открыть
-                                                                        </a>
-                                                                    </td>
-                                                                </tr>
-                                                            {% endfor %}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                            </div>
-                        {% endif %}
                     {% endfor %}
-                    {% endif %}
-                    
+                </div>
                 {% else %}
-                    <div class="alert alert-{{ 'success' if record.risk_level == 'NORMAL' else 'warning' if record.risk_level == 'LOW' else 'danger' }} text-center">
-                        <h4>Оценка: {{ record.score }}/100 | Статус: {{ record.risk_level }}</h4>
+                <div class="alert alert-success mb-4">
+                    <strong>Нарушений не обнаружено!</strong> Контент и активность выглядят естественно.
+                </div>
+                {% endif %}
+                
+                {% if details.findings and details.findings|length > 0 %}
+                {% set user_findings_count = namespace(value=0) %}
+                {% for finding in details.findings %}
+                {% if finding.user_id %}
+                {% set user_findings_count.value = user_findings_count.value + 1 %}
+                {% endif %}
+                {% endfor %}
+                
+                <h5 class="mt-4 mb-3">Подробные нарушения у {{ user_findings_count.value }} {{ 'пользователя' if user_findings_count.value == 1 else 'пользователей' }}</h5>
+                
+                {% for finding in details.findings %}
+                {% if finding.user_id %}
+                <div class="card mb-4 border-warning shadow-sm">
+                    <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div>
+                            <strong>Пользователь: {{ finding.user_name or 'id' + finding.user_id|string }}</strong>
+                            <span class="badge bg-warning text-dark ms-2">{{ finding.patterns|length }} нарушений активности</span>
+                        </div>
+                        {% if finding.profile_analysis %}
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="text-muted small">Оценка профиля:</span>
+                            <span class="badge bg-{{ 'danger' if finding.profile_analysis.risk_level == 'HIGH' else 'warning' if finding.profile_analysis.risk_level == 'MEDIUM' else 'success' if finding.profile_analysis.risk_level == 'NORMAL' else 'secondary' }} fs-6">
+                                {{ finding.profile_analysis.score }}/100 — {{ finding.profile_analysis.risk_level }}
+                            </span>
+                        </div>
+                        {% endif %}
                     </div>
-
-                    <h5 class="mt-4">Признаки</h5>
-                    <ul class="list-group mb-4">
-                        {% for r in details.reasons|sort(attribute='points', reverse=True) %}
-                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                {{ r.reason }}
-                                <span class="badge bg-dark rounded-pill">{{ r.points }} бал.</span>
-                            </li>
-                        {% endfor %}
-                    </ul>
                     
-                    {% if details.anomalies %}
-                        <h5>Аномалии</h5>
-                        <ul class="list-group">
-                            {% for a in details.anomalies %}
-                                <li class="list-group-item"><strong>{{ a.category }}:</strong> {{ a.description }}</li>
+                    {% if finding.profile_analysis and finding.profile_analysis.reasons %}
+                    <div class="card-body border-bottom">
+                        <h6 class="text-muted small mb-2">Причины оценки профиля:</h6>
+                        <ul class="list-unstyled mb-0 small">
+                            {% for reason in finding.profile_analysis.reasons %}
+                            <li class="d-flex justify-content-between text-break">
+                                <span>• {{ reason.reason }}</span>
+                                <span class="badge bg-secondary ms-2">+{{ reason.points }} бал.</span>
+                            </li>
                             {% endfor %}
                         </ul>
+                    </div>
                     {% endif %}
+                    
+                    <div class="card-body p-0">
+                        {% for pattern in finding.patterns %}
+                        <div class="accordion accordion-flush" id="acc-{{ finding.user_id }}-{{ loop.index }}">
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                        data-bs-target="#collapse-{{ finding.user_id }}-{{ loop.index }}" style="cursor: pointer;">
+                                        <span class="badge bg-{{ 'danger' if pattern.severity == 'HIGH' else 'warning' if pattern.severity == 'MEDIUM' else 'info' }} me-2">{{ pattern.severity }}</span>
+                                        <span class="flex-grow-1">{{ pattern.summary }}</span>
+                                    </button>
+                                </h2>
+                                <div id="collapse-{{ finding.user_id }}-{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#acc-{{ finding.user_id }}-{{ loop.index }}">
+                                    <div class="accordion-body">
+                                        {% for example in pattern.examples %}
+                                        {% if example.pattern %}
+                                        <div class="alert alert-light mb-3">
+                                            <p class="mb-2"><strong>Шаблон:</strong> <code class="text-break">{{ example.pattern }}</code></p>
+                                            <p class="mb-0 text-muted small">Повторов: {{ example.count }}</p>
+                                        </div>
+                                        {% endif %}
+                                        {% if example.instances and example.instances|length > 0 %}
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-striped table-hover">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th style="width: 20%;">Время</th>
+                                                        <th style="width: 50%;">Текст</th>
+                                                        <th style="width: 30%;">Ссылка</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for inst in example.instances %}
+                                                    <tr>
+                                                        <td class="small text-nowrap">{{ inst.time }}</td>
+                                                        <td class="small text-break">{{ inst.text }}</td>
+                                                        <td>
+                                                            <a href="{{ inst.link }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">
+                                                                Открыть
+                                                            </a>
+                                                        </td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        {% endif %}
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% elif finding.type == 'network_coordination' and finding.groups %}
+                <div class="card mb-4 border-info shadow-sm">
+                    <div class="card-header bg-info bg-opacity-10">
+                        <strong>Скоординированные комментарии</strong>
+                        <span class="badge bg-info text-dark ms-2">{{ finding.groups|length }} групп</span>
+                    </div>
+                    <div class="card-body p-0">
+                        {% for group in finding.groups %}
+                        <div class="accordion accordion-flush" id="acc-net-{{ loop.index }}">
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                        data-bs-target="#collapse-net-{{ loop.index }}" style="cursor: pointer;">
+                                        <span class="flex-grow-1">Группа из {{ group.users|length }} пользователей</span>
+                                        <small class="text-muted ms-2">"{{ group.pattern[:50] }}..."</small>
+                                    </button>
+                                </h2>
+                                <div id="collapse-net-{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#acc-net-{{ loop.index }}">
+                                    <div class="accordion-body">
+                                        <p class="mb-3"><strong>Участники:</strong>
+                                            {% for uid in group.users %}<span class="badge bg-secondary me-1">id{{ uid }}</span>{% endfor %}
+                                        </p>
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-striped table-hover">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th>Пользователь</th>
+                                                        <th>Время</th>
+                                                        <th>Текст</th>
+                                                        <th>Ссылка</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for ex in group.examples %}
+                                                    <tr>
+                                                        <td><code>id{{ ex.user_id }}</code></td>
+                                                        <td class="small text-nowrap">{{ ex.time }}</td>
+                                                        <td class="small text-break">{{ ex.text }}</td>
+                                                        <td>
+                                                            <a href="{{ ex.link }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">
+                                                                Открыть
+                                                            </a>
+                                                        </td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                {% endfor %}
                 {% endif %}
             </div>
         </div>
