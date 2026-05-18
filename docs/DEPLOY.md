@@ -41,6 +41,10 @@ POSTGRES_DB=botnethunter
 POSTGRES_USER=botnethunter
 POSTGRES_PASSWORD=botnethunter
 SECURITY_ALLOWED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000
+SONAR_POSTGRES_DB=sonar
+SONAR_POSTGRES_USER=sonar
+SONAR_POSTGRES_PASSWORD=replace_with_random_sonar_db_password
+SONAR_WEB_CONTEXT=/sonar
 ```
 
 > **Примечание:** При запуске всех компонентов в Docker хост в `DATABASE_URL` должен указывать на имя сервиса базы данных в `docker-compose.yml` (обычно `postgres` или `db`, но не `localhost`).
@@ -62,6 +66,22 @@ make docker-build
 ```bash
 make docker-up
 ```
+
+Для production-запуска вместе с nginx reverse proxy и SonarQube:
+
+```bash
+make docker-up-prod
+```
+
+SonarQube будет доступен по адресу:
+
+```text
+https://botnethunter.duckdns.org/sonar/
+```
+
+При первом входе используйте `admin` / `admin`, затем смените пароль и создайте project token для CI/CD.
+
+> **Примечание для Linux-хоста:** SonarQube использует Elasticsearch. Если контейнер `sonarqube` не стартует, задайте на хосте `sudo sysctl -w vm.max_map_count=524288` и добавьте `vm.max_map_count=524288` в `/etc/sysctl.conf`.
 
 ---
 
@@ -85,3 +105,7 @@ make docker-up
 | `POSTGRES_USER` | Имя пользователя-владельца базы данных PostgreSQL | Строка | `botnethunter` |
 | `POSTGRES_PASSWORD` | Пароль пользователя базы данных PostgreSQL | Строка | `botnethunter` |
 | `SECURITY_ALLOWED_ORIGINS` | Список разрешённых источников для политики CORS (без wildcard `*`) | URL через запятую | `http://127.0.0.1:8000,http://localhost:8000` |
+| `SONAR_POSTGRES_DB` | Имя базы данных SonarQube | Строка | `sonar` |
+| `SONAR_POSTGRES_USER` | Пользователь базы данных SonarQube | Строка | `sonar` |
+| `SONAR_POSTGRES_PASSWORD` | Пароль базы данных SonarQube | Строка | **Уникально - указывается пользователем самостоятельно** |
+| `SONAR_WEB_CONTEXT` | URL-префикс SonarQube за reverse proxy | Строка | `/sonar` |

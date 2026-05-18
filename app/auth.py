@@ -26,12 +26,33 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def decode_token(token: str) -> str | None:
+def decode_token_payload(token: str) -> dict | None:
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload.get("sub")
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError:
         return None
+
+
+def decode_token(token: str) -> str | None:
+    payload = decode_token_payload(token)
+    if not payload:
+        return None
+    return payload.get("sub")
+
+
+def create_admin_token() -> str:
+    return create_access_token({"sub": ADMIN_EMAIL, "role": "admin"})
+
+
+def is_admin_token(token: str | None) -> bool:
+    if not token:
+        return False
+    payload = decode_token_payload(token)
+    return bool(
+        payload
+        and payload.get("sub") == ADMIN_EMAIL
+        and payload.get("role") == "admin"
+    )
 
 
 def is_admin_login(email: str, password: str) -> bool:

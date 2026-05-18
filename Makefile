@@ -9,7 +9,7 @@ IMAGE      ?= botnethunter
 .PHONY: install check run db-up wait-db db-down clean init \
 docker-build docker-up docker-up-prod docker-down docker-down-prod \
 docker-clean-prod rebuild docker-logs docker-shell \
-version version-bump-patch version-bump-minor version-bump-major version-set
+sonar-scan version version-bump-patch version-bump-minor version-bump-major version-set
 
 # — Локальная разработка —
 
@@ -48,6 +48,12 @@ run: db-up wait-db
 clean:
 	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
+
+sonar-scan:
+	@test -n "$$SONAR_TOKEN" || (echo "SONAR_TOKEN is required" && exit 1)
+	@test -n "$$SONAR_HOST_URL" || (echo "SONAR_HOST_URL is required" && exit 1)
+	@command -v sonar-scanner >/dev/null 2>&1 || (echo "sonar-scanner is not installed" && exit 1)
+	sonar-scanner
 
 # — Docker —
 

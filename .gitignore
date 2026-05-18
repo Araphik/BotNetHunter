@@ -162,6 +162,9 @@ MANIFEST
 .coverage
 .coverage.*
 .cache
+.scannerwork/
+.sonar/
+.trivycache/
 htmlcov/
 .hypothesis/
 

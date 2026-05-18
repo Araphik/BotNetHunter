@@ -19,7 +19,8 @@ from app.models import (
     AnalyzeRequest, AnalyzeResponse, HistoryItemResponse, HistoryListResponse, APIError
 )
 from app.auth import (
-    get_password_hash, verify_password, create_access_token, decode_token, is_admin_login
+    get_password_hash, verify_password, create_access_token, decode_token,
+    create_admin_token, is_admin_login, is_admin_token
 )
 from config.settings import BASE_DIR, APP_VERSION
 from config.weights import DEFAULT_REQUESTS_LIMIT, DEFAULT_MODULE_WEIGHTS
@@ -213,10 +214,7 @@ def get_user_from_cookie(request: Request, db: Session):
 def get_admin_from_cookie(request: Request) -> bool:
     admin_email = request.cookies.get("admin_email")
     admin_token = request.cookies.get("admin_token")
-    return (
-        admin_email == ADMIN_EMAIL and 
-        admin_token == "admin_session"
-    )
+    return admin_email == ADMIN_EMAIL and is_admin_token(admin_token)
 
 
 def get_param_value(module_name: str, param_key: str, default: int) -> int:
@@ -370,7 +368,7 @@ async def login(request: Request, email: str = Form(...), password: str = Form(.
     if is_admin_login(email, password):
         response = RedirectResponse(url="/admin", status_code=303)
         response.set_cookie("admin_email", ADMIN_EMAIL, httponly=True, max_age=86400, secure=True, samesite="lax")
-        response.set_cookie("admin_token", "admin_session", httponly=True, max_age=86400, secure=True, samesite="lax")
+        response.set_cookie("admin_token", create_admin_token(), httponly=True, max_age=86400, secure=True, samesite="lax")
         return response
     
     user = db.query(User).filter(User.email == email).first()
