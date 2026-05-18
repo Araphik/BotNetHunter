@@ -5,7 +5,7 @@
     <div class="col-lg-5">
         <div class="card shadow h-100 border-primary">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Новый анализ</h5>
+                <h5 class="mb-0">Анализ группы</h5>
                 {% if user.is_admin %}
                 <a href="/admin" class="btn btn-sm btn-light">Админ-панель</a>
                 {% endif %}
@@ -19,18 +19,23 @@
                 {% endif %}
                 <form method="post" action="/analyze" id="analyzeForm" data-pending-analysis-id="{{ pending_analysis.id if pending_analysis else '' }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="target_type" value="group">
                     <div class="mb-3">
-                        <label for="target" class="form-label fw-bold">Ссылка, ID или username</label>
-                        <input type="text" class="form-control form-control-lg" id="target" name="target" placeholder="Введите ссылку, id или username" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="go" required pattern="^(@?[\w.]+|id\d+|club\d+|public\d+|event\d+|(https?://)?(m\.|www\.|mobile\.)?vk\.(com|ru)/[\w@./?=&%-]+)$" title="Введите username, @username, ID, club/public/event ID или ссылку VK">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Тип цели</label>
-                        <div class="btn-group w-100" role="group">
-                            <input type="radio" class="btn-check" name="target_type" id="type_user" value="user" checked>
-                            <label class="btn btn-outline-primary" for="type_user">Профиль</label>
-                            <input type="radio" class="btn-check" name="target_type" id="type_group" value="group">
-                            <label class="btn btn-outline-primary" for="type_group">Группа</label>
-                        </div>
+                        <label for="target" class="form-label fw-bold">Ссылка или ID группы</label>
+                        <input
+                            type="text"
+                            class="form-control form-control-lg"
+                            id="target"
+                            name="target"
+                            placeholder="Введите ссылку или ID группы"
+                            autocomplete="off"
+                            autocapitalize="none"
+                            spellcheck="false"
+                            enterkeyhint="go"
+                            required
+                            pattern="^(@?[\w.]+|id\d+|club\d+|public\d+|event\d+|(https?://)?(m\.|www\.|mobile\.)?vk\.(com|ru)/[\w@./?=&%-]+)$"
+                            title="Введите username, @username, ID, club/public/event ID или ссылку VK"
+                        >
                     </div>
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-primary btn-lg {% if pending_analysis %}opacity-50{% endif %}" id="analyzeBtn" {% if pending_analysis %}disabled{% endif %}>
@@ -46,7 +51,14 @@
                 <div class="bg-light rounded p-3">
                     <h6 class="fw-bold mb-2">Лимит запросов</h6>
                     <div class="progress mb-2" style="height: 20px;">
-                        <div class="progress-bar {% if user.requests_today >= user.requests_limit %}bg-danger{% elif user.requests_today >= user.requests_limit * 0.8 %}bg-warning{% else %}bg-success{% endif %}" role="progressbar" style="width: {{ progress_percent }}%" aria-valuenow="{{ user.requests_today }}" aria-valuemin="0" aria-valuemax="{{ user.requests_limit }}">
+                        <div
+                            class="progress-bar {% if user.requests_today >= user.requests_limit %}bg-danger{% elif user.requests_today >= user.requests_limit * 0.8 %}bg-warning{% else %}bg-success{% endif %}"
+                            role="progressbar"
+                            style="width: {{ progress_percent }}%"
+                            aria-valuenow="{{ user.requests_today }}"
+                            aria-valuemin="0"
+                            aria-valuemax="{{ user.requests_limit }}"
+                        >
                             {{ user.requests_today }} / {{ user.requests_limit }}
                         </div>
                     </div>
@@ -75,35 +87,53 @@
                     <thead class="table-light sticky-top">
                         <tr>
                             <th style="width: 18%;">Дата</th>
-                            <th style="width: 25%;">Цель</th>
-                            <th style="width: 12%;">Тип</th>
+                            <th style="width: 35%;">Цель</th>
                             <th style="width: 15%;">Оценка</th>
                             <th style="width: 15%;">Статус</th>
-                            <th style="width: 15%;">Действие</th>
+                            <th style="width: 17%;">Действие</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for h in history %}
                         <tr class="{% if h.status == 'failed' %}table-danger{% elif h.status == 'pending' %}table-warning{% endif %}">
-                            <td class="small">{{ h.created_at_msk.strftime('%d.%m<br>%H:%M')|safe if h.created_at_msk else h.created_at.strftime('%d.%m<br>%H:%M')|safe }}</td>
-                            <td>
-                                <span class="fw-medium">{{ h.target }}</span>
-                                {% if h.status == 'failed' %}<br><small class="text-danger">Ошибка</small>{% elif h.status == 'pending' %}<br><small class="text-warning">В обработке</small>{% endif %}
+                            <td class="small">
+                                {{ h.created_at_msk.strftime('%d.%m<br>%H:%M')|safe if h.created_at_msk else h.created_at.strftime('%d.%m<br>%H:%M')|safe }}
                             </td>
                             <td>
-                                {% if h.target_type == 'group' %}<span class="badge bg-info">Группа</span>{% else %}<span class="badge bg-secondary">Профиль</span>{% endif %}
+                                <span class="fw-medium">{{ h.target }}</span>
+                                {% if h.status == 'failed' %}
+                                <br><small class="text-danger">Ошибка</small>
+                                {% elif h.status == 'pending' %}
+                                <br><small class="text-warning">В обработке</small>
+                                {% endif %}
                             </td>
                             <td>
                                 {% if h.target_type == 'group' and h.average_score is not none %}
-                                <span class="fw-bold {% if h.average_score >= 70 %}text-success{% elif h.average_score >= 40 %}text-warning{% else %}text-danger{% endif %}">{{ h.average_score }}/100</span>
+                                <span class="fw-bold {% if h.average_score >= 70 %}text-success{% elif h.average_score >= 40 %}text-warning{% else %}text-danger{% endif %}">
+                                    {{ h.average_score }}/100
+                                </span>
                                 {% elif h.score is not none %}
-                                <span class="fw-bold {% if h.score >= 70 %}text-success{% elif h.score >= 40 %}text-warning{% else %}text-danger{% endif %}">{{ h.score }}/100</span>
-                                {% else %}<span class="text-muted">—</span>{% endif %}
+                                <span class="fw-bold {% if h.score >= 70 %}text-success{% elif h.score >= 40 %}text-warning{% else %}text-danger{% endif %}">
+                                    {{ h.score }}/100
+                                </span>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
                             </td>
                             <td>
                                 {% if h.risk_level %}
-                                <span class="badge {% if h.risk_level == 'NORMAL' %}bg-success {% elif h.risk_level == 'LOW' %}bg-warning text-dark {% elif h.risk_level == 'MEDIUM' %}bg-orange text-dark {% elif h.risk_level == 'HIGH' %}bg-danger {% else %}bg-secondary{% endif %}">{{ h.risk_level }}</span>
-                                {% else %}<span class="text-muted">—</span>{% endif %}
+                                <span class="badge
+                                {% if h.risk_level == 'NORMAL' %}bg-success
+                                {% elif h.risk_level == 'LOW' %}bg-warning text-dark
+                                {% elif h.risk_level == 'MEDIUM' %}bg-orange text-dark
+                                {% elif h.risk_level == 'HIGH' %}bg-danger
+                                {% else %}bg-secondary{% endif %}
+                                ">
+                                    {{ h.risk_level }}
+                                </span>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
                             </td>
                             <td>
                                 {% if h.status == 'completed' %}
@@ -126,17 +156,11 @@
         </div>
     </div>
 </div>
-
 <div class="row mt-4">
     <div class="col-12">
         <div class="card border-secondary">
-            <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+            <div class="card-header bg-secondary text-white">
                 <h6 class="mb-0">Настройки аккаунта</h6>
-                {% if request.query_params.get('2fa_enabled') == '1' %}
-                <span class="badge bg-success">2FA успешно включена</span>
-                {% elif request.query_params.get('2fa_disabled') == '1' %}
-                <span class="badge bg-warning text-dark">2FA отключена</span>
-                {% endif %}
             </div>
             <div class="card-body">
                 <div class="row align-items-center">
