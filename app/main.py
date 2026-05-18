@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, inspect, text
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
@@ -44,6 +44,32 @@ rate_limit_counter = Counter(
 
 # Часовой пояс Москвы (UTC+3)
 MSK_TZ = timezone(timedelta(hours=3))
+
+
+def apply_schema_migrations():
+    """Минимальные idempotent-миграции для существующих установок без Alembic."""
+    inspector = inspect(engine)
+    if not inspector.has_table("users"):
+        return
+
+    existing_columns = {column["name"] for column in inspector.get_columns("users")}
+    statements = []
+
+    if "totp_secret" not in existing_columns:
+        statements.append("ALTER TABLE users ADD COLUMN totp_secret VARCHAR(32)")
+
+    if "is_2fa_enabled" not in existing_columns:
+        if engine.dialect.name == "postgresql":
+            statements.append("ALTER TABLE users ADD COLUMN is_2fa_enabled BOOLEAN NOT NULL DEFAULT false")
+        else:
+            statements.append("ALTER TABLE users ADD COLUMN is_2fa_enabled BOOLEAN NOT NULL DEFAULT 0")
+
+    if not statements:
+        return
+
+    with engine.begin() as connection:
+        for statement in statements:
+            connection.execute(text(statement))
 
 
 def to_msk_time(dt: datetime) -> datetime:
@@ -186,6 +212,7 @@ app = FastAPI(
 )
 Instrumentator(should_group_status_codes=False).instrument(app).expose(app)
 Base.metadata.create_all(bind=engine)
+apply_schema_migrations()
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
