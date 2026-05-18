@@ -121,7 +121,7 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
     if status != 'ok' or not group_data or 'response' not in group_data:
         logger.error(f"Не удалось получить данные группы {normalized_id}")
         return None
-    
+        
     group_info = group_data['response'][0] if isinstance(group_data['response'], list) else group_data['response']
     group_id_numeric = group_info.get('id')
     owner_id = f"-{group_id_numeric}"
@@ -133,7 +133,7 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
     if posts_status == 'ok' and posts_data and 'response' in posts_data:
         posts = posts_data['response'].get('items', [])
         logger.info(f"Загружено постов: {len(posts)}")
-    
+        
     post_score, post_reasons = GroupPostAnalyzer(vk).analyze(posts, group_info)
     
     posts_with_engagement = []
@@ -152,8 +152,9 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
             'comments': comments
         })
         time.sleep(REQUEST_DELAY)
-    
+        
     logger.info(f"Постов с активностью: {len(posts_with_engagement)}")
+    
     activity_score, activity_reasons, activity_findings = ActivityAnalyzer(vk).analyze(
         posts_with_engagement, owner_id=owner_id
     )
@@ -161,27 +162,29 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
     total_score = round(post_score * 0.6 + activity_score * 0.4)
     all_reasons = post_reasons + activity_reasons
     
+    # ИСПРАВЛЕНО: Логика формирования сводки. Четкое разделение по ключевым словам исключает перепутывание меток.
     reason_counts = defaultdict(int)
-    coordinated_groups_count = 0
     for r in all_reasons:
         r_lower = r.lower()
-        if "повторяющиеся" in r_lower: reason_counts["Повторяющиеся тексты"] += 1
-        elif "шаблонных комментариев" in r_lower: reason_counts["Шаблонные комментарии"] += 1
-        elif "быстрых комментариев" in r_lower or "серий быстрых" in r_lower: reason_counts["Быстрая серия комментариев"] += 1
-        elif "интервалом" in r_lower: reason_counts["Строгий интервал публикаций"] += 1
-        elif "03:00-05:00" in r_lower or "ночную" in r_lower: reason_counts["Ночная активность"] += 1
-        elif "массовые лайки" in r_lower: reason_counts["Массовые лайки"] += 1
-        elif "высокую активность" in r_lower or "нового аккаунта" in r_lower: reason_counts["Активность новых аккаунтов"] += 1
-        elif "скоординированных комментариев" in r_lower:
-            match = re.search(r'Обнаружено (\d+) групп', r)
-            if match:
-                coordinated_groups_count = int(match.group(1))
+        if "повторяющиеся" in r_lower or "повторяемость" in r_lower:
+            reason_counts["Повторяющиеся тексты"] += 1
+        elif "шаблон" in r_lower:
+            reason_counts["Шаблонные комментарии"] += 1
+        elif "быстрых" in r_lower or "серий быстрых" in r_lower:
+            reason_counts["Быстрая серия комментариев"] += 1
+        elif "интервалом" in r_lower or "строгий интервал" in r_lower:
+            reason_counts["Строгий интервал публикаций"] += 1
+        elif "ночн" in r_lower or "03-05" in r_lower or "ночью" in r_lower:
+            reason_counts["Ночная активность"] += 1
+        elif "массовые лайки" in r_lower:
+            reason_counts["Массовые лайки"] += 1
+        elif "нового аккаунта" in r_lower or "высокую активность" in r_lower:
+            reason_counts["Активность новых аккаунтов"] += 1
+        elif "скоординированных" in r_lower:
             reason_counts["Скоординированные действия"] += 1
-        elif "аномально много шаблонных" in r_lower or "повышенное количество" in r_lower: reason_counts["Общий спам в группе"] += 1
-    
-    if coordinated_groups_count > 0:
-        reason_counts["Скоординированные действия"] = f"{coordinated_groups_count} групп"
-    
+        elif "аномально много" in r_lower or "повышенное количество" in r_lower:
+            reason_counts["Общий спам в группе"] += 1
+
     summary = [{"label": k, "count": v} for k, v in sorted(reason_counts.items(), key=lambda x: (isinstance(x[1], str), x[1] if isinstance(x[1], int) else 0), reverse=True)]
     
     total_comments = sum(len(p.get('comments', [])) for p in posts_with_engagement)

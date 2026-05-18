@@ -36,7 +36,6 @@ def _format_duration(seconds):
 class ActivityAnalyzer(BaseAnalyzer):
     def __init__(self, vk_client):
         super().__init__(vk_client)
-        # Пороги детектирования (из БД)
         self.SIMILARITY_THRESHOLD = _get_settings('similarity_threshold', 0.85)
         self.COUNT_REPETITIVE = int(_get_settings('count_repetitive', 3))
         self.RAPID_COMMENT_WINDOW_MIN = int(_get_settings('rapid_comment_window_min', 3))
@@ -100,7 +99,7 @@ class ActivityAnalyzer(BaseAnalyzer):
             times = data['times']
             likes = list(data['likes'])
             if len(comments) == 0 and len(likes) == 0: continue
-            
+
             user_findings = []
 
             # 1. Массовые лайки
@@ -169,7 +168,7 @@ class ActivityAnalyzer(BaseAnalyzer):
                         reasons.append(f"Пользователь id{uid}: {len(rapid_series_list)} серий быстрых комментариев")
                         user_findings.extend(rapid_series_list)
 
-            # 5. Строгий интервал
+            # 5. Строгий интервал (ИСПРАВЛЕНО: добавлены примеры)
             if len(comments) >= 3:
                 sorted_c = sorted(comments, key=lambda x: x['date'] or 0)
                 times_list = [c['date'] for c in sorted_c if c['date']]
@@ -184,10 +183,16 @@ class ActivityAnalyzer(BaseAnalyzer):
                                 penalty = int(_get_settings('penalty_regular', 10))
                                 score += penalty
                                 reasons.append(f"Пользователь id{uid}: серия из 3 комментариев с интервалом ~{_format_duration(avg_w)}")
-                                user_findings.append({'type': 'regular_interval', 'severity': 'MEDIUM', 'summary': f"Серия из 3 комментариев с интервалом ~{_format_duration(avg_w)}"})
+                                examples_instances = [{'link': self._build_comment_link(sorted_c[idx]['post_id'], sorted_c[idx]['comment_id'], owner_id), 'time': _format_msk_time(sorted_c[idx]['date']), 'text': sorted_c[idx]['text'][:200]} for idx in range(i, i+3)]
+                                user_findings.append({
+                                    'type': 'regular_interval', 
+                                    'severity': 'MEDIUM', 
+                                    'summary': f"Серия из 3 комментариев с интервалом ~{_format_duration(avg_w)}", 
+                                    'examples': [{'instances': examples_instances}]
+                                })
                                 break
 
-            # 6. Ночная активность
+            # 6. Ночная активность (ИСПРАВЛЕНО: добавлены примеры)
             if len(comments) >= 3:
                 times_list = [c['date'] for c in comments if c['date']]
                 if times_list:
@@ -196,7 +201,13 @@ class ActivityAnalyzer(BaseAnalyzer):
                         penalty = int(_get_settings('penalty_night', 8))
                         score += penalty
                         reasons.append(f"Пользователь id{uid}: {night_count}/{len(times_list)} комментариев ночью (03-05)")
-                        user_findings.append({'type': 'night_activity', 'severity': 'MEDIUM', 'summary': f"{night_count}/{len(times_list)} комментариев ночью"})
+                        examples_instances = [{'link': self._build_comment_link(c['post_id'], c['comment_id'], owner_id), 'time': _format_msk_time(c['date']), 'text': c['text'][:200]} for c in comments if c['date'] and 3 <= datetime.fromtimestamp(c['date'], tz=timezone.utc).astimezone(MSK_TZ).hour <= 5]
+                        user_findings.append({
+                            'type': 'night_activity', 
+                            'severity': 'MEDIUM', 
+                            'summary': f"{night_count}/{len(times_list)} комментариев ночью", 
+                            'examples': [{'instances': examples_instances}]
+                        })
 
             # 7. Новый аккаунт с высокой активностью
             if uid > self.NEW_ACC_ID_THRESHOLD:
@@ -283,7 +294,6 @@ class ActivityAnalyzer(BaseAnalyzer):
                 norm = re.sub(r'[^\w\s]', '', c['text'].lower().strip())
                 norm = re.sub(r'\s+', ' ', norm).strip()
                 if len(norm) > 3: text_groups[norm].append({'user_id': uid, 'text': c['text'], 'date': c['date'], 'post_id': c['post_id'], 'comment_id': c['comment_id']})
-        
         coordinated = []
         for norm, group in text_groups.items():
             uids = set(item['user_id'] for item in group)
