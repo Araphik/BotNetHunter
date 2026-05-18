@@ -1,0 +1,204 @@
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_TAG'
+    - when: never
+
+stages:
+  - dependencies
+  - lint
+  - sast
+  - build
+  - container_scan
+  - release
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_DRIVER: overlay2
+  SONAR_USER_HOME: "$CI_PROJECT_DIR/.sonar"
+  SONAR_PROJECT_KEY: "botnethunter"
+
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - .cache/pip/
+    - .sonar/cache/
+
+install_dependencies:
+  stage: dependencies
+  image: python:3.11-slim
+  script:
+    - python -m pip install --upgrade pip
+    - python -m pip install -r requirements.txt
+    - python -m pip check
+
+lint_code:
+  stage: lint
+  image: python:3.11-slim
+  needs:
+    - install_dependencies
+  script:
+    - python -m pip install --upgrade pip
+    - python -m pip install -r requirements.txt ruff==0.8.6
+    - ruff check --select E9,F63,F7,F82 analyzers api app config core models utils
+    - python -m compileall analyzers api app config core models utils
+
+sast_sonarqube_scan:
+  stage: sast
+  image:
+    name: sonarsource/sonar-scanner-cli:latest
+    entrypoint: [""]
+  needs:
+    - lint_code
+  script:
+    - test -n "$SONAR_TOKEN" || (echo "SONAR_TOKEN CI/CD variable is required" && exit 1)
+    - test -n "$SONAR_HOST_URL" || (echo "SONAR_HOST_URL CI/CD variable is required" && exit 1)
+    - sonar-scanner
+  allow_failure: false
+
+sast_sonarqube_report:
+  stage: sast
+  image: python:3.11-slim
+  needs:
+    - sast_sonarqube_scan
+  script:
+    - test -n "$SONAR_TOKEN" || (echo "SONAR_TOKEN CI/CD variable is required" && exit 1)
+    - test -n "$SONAR_HOST_URL" || (echo "SONAR_HOST_URL CI/CD variable is required" && exit 1)
+    - mkdir -p reports
+    - |
+      python - <<'PY'
+      import base64
+      import json
+      import os
+      import sys
+      import urllib.parse
+      import urllib.request
+      from pathlib import Path
+
+      host = os.environ["SONAR_HOST_URL"].rstrip("/")
+      token = os.environ["SONAR_TOKEN"]
+      project_key = os.environ.get("SONAR_PROJECT_KEY", "botnethunter")
+      params = urllib.parse.urlencode(
+          {
+              "componentKeys": project_key,
+              "types": "VULNERABILITY",
+              "severities": "BLOCKER,CRITICAL",
+              "resolved": "false",
+          }
+      )
+      request = urllib.request.Request(f"{host}/api/issues/search?{params}")
+      auth = base64.b64encode(f"{token}:".encode()).decode()
+      request.add_header("Authorization", f"Basic {auth}")
+
+      with urllib.request.urlopen(request, timeout=60) as response:
+          data = json.loads(response.read().decode())
+
+      reports_dir = Path("reports")
+      json_path = reports_dir / "sonarqube-critical-vulnerabilities.json"
+      md_path = reports_dir / "sonarqube-critical-vulnerabilities.md"
+      json_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+      total = int(data.get("total", 0))
+      md_path.write_text(
+          "# SonarQube critical vulnerabilities report\n\n"
+          f"Project: `{project_key}`\n\n"
+          f"Open CRITICAL/BLOCKER vulnerabilities: `{total}`\n",
+          encoding="utf-8",
+      )
+      print(f"{total} critical/blocker vulnerabilities found")
+      sys.exit(1 if total else 0)
+      PY
+  artifacts:
+    when: always
+    paths:
+      - reports/sonarqube-critical-vulnerabilities.json
+      - reports/sonarqube-critical-vulnerabilities.md
+    expire_in: 30 days
+  allow_failure: false
+
+build_distribution:
+  stage: build
+  image: docker:27.3.1
+  services:
+    - name: docker:27.3.1-dind
+      alias: docker
+  needs:
+    - sast_sonarqube_report
+  before_script:
+    - apk add --no-cache git zip
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  script:
+    - APP_VERSION="${CI_COMMIT_TAG:-$(cat VERSION)}"
+    - IMAGE_TAG="${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}"
+    - CONTAINER_IMAGE="$CI_REGISTRY_IMAGE:$IMAGE_TAG"
+    - docker build --tag "$CONTAINER_IMAGE" --tag "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG" .
+    - docker push "$CONTAINER_IMAGE"
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
+    - mkdir -p dist
+    - git archive --format=zip --output "dist/botnethunter-${APP_VERSION}-source.zip" HEAD
+    - docker save "$CONTAINER_IMAGE" | gzip > "dist/botnethunter-${APP_VERSION}-docker-image.tar.gz"
+    - sha256sum dist/* > dist/SHA256SUMS
+    - printf "APP_VERSION=%s\nCONTAINER_IMAGE=%s\nBUILD_JOB_ID=%s\n" "$APP_VERSION" "$CONTAINER_IMAGE" "$CI_JOB_ID" > build.env
+  artifacts:
+    reports:
+      dotenv: build.env
+    paths:
+      - dist/
+    expire_in: never
+
+container_scan_trivy:
+  stage: container_scan
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  needs:
+    - job: build_distribution
+      artifacts: true
+  variables:
+    TRIVY_USERNAME: "$CI_REGISTRY_USER"
+    TRIVY_PASSWORD: "$CI_REGISTRY_PASSWORD"
+    TRIVY_AUTH_URL: "$CI_REGISTRY"
+    TRIVY_NO_PROGRESS: "true"
+    TRIVY_CACHE_DIR: ".trivycache/"
+  script:
+    - test -n "$CONTAINER_IMAGE" || (echo "CONTAINER_IMAGE is required" && exit 1)
+    - mkdir -p reports
+    - trivy image --format table --output reports/trivy-image-report.txt "$CONTAINER_IMAGE"
+    - trivy image --format json --output reports/trivy-image-report.json "$CONTAINER_IMAGE"
+    - trivy image --format template --template "@/contrib/gitlab.tpl" --output reports/gl-container-scanning-report.json "$CONTAINER_IMAGE"
+  artifacts:
+    when: always
+    paths:
+      - reports/trivy-image-report.txt
+      - reports/trivy-image-report.json
+      - reports/gl-container-scanning-report.json
+    reports:
+      container_scanning: reports/gl-container-scanning-report.json
+    expire_in: 30 days
+
+release_distribution:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs:
+    - job: build_distribution
+      artifacts: true
+    - job: container_scan_trivy
+      artifacts: true
+  rules:
+    - if: '$CI_COMMIT_TAG'
+  script:
+    - echo "Creating GitLab Release for $CI_COMMIT_TAG"
+  release:
+    name: "BotNetHunter $CI_COMMIT_TAG"
+    tag_name: "$CI_COMMIT_TAG"
+    description: "Автоматическая сборка BotNetHunter $CI_COMMIT_TAG. Docker image: $CONTAINER_IMAGE"
+    assets:
+      links:
+        - name: "Source distributive ZIP"
+          url: "$CI_PROJECT_URL/-/jobs/$BUILD_JOB_ID/artifacts/raw/dist/botnethunter-$APP_VERSION-source.zip"
+        - name: "Docker image archive"
+          url: "$CI_PROJECT_URL/-/jobs/$BUILD_JOB_ID/artifacts/raw/dist/botnethunter-$APP_VERSION-docker-image.tar.gz"
+        - name: "GitLab Container Registry image"
+          url: "$CI_PROJECT_URL/container_registry"

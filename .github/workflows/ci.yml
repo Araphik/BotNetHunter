@@ -3,8 +3,14 @@ name: CI
 on:
   push:
     branches: [ "main", "master" ]
+    tags: [ "*" ]
   pull_request:
     branches: [ "main", "master" ]
+
+permissions:
+  contents: write
+  packages: write
+  security-events: write
 
 jobs:
   build-job:
@@ -55,11 +61,14 @@ jobs:
           python-version: '3.11'
       - run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.txt ruff==0.8.6
           cp .env.example .env
+      - name: Lint code
+        run: |
+          ruff check --select E9,F63,F7,F82 analyzers api app config core models utils
       - name: Static syntax check
         run: |
-          echo "Linting code..."
+          echo "Checking Python syntax..."
           python -m compileall analyzers api app config core models utils
           echo "No syntax issues found."
 
@@ -98,13 +107,39 @@ jobs:
   package-job:
     runs-on: ubuntu-latest
     needs: [ syntax-check-job, import-check-job ]
+    outputs:
+      app-version: ${{ steps.package-meta.outputs.app_version }}
+      image-ref: ${{ steps.package-meta.outputs.image_ref }}
     env:
       IMAGE_NAME: botnethunter
     steps:
       - uses: actions/checkout@v4
 
-      - name: Read application version
-        run: echo "APP_VERSION=$(cat VERSION)" >> "$GITHUB_ENV"
+      - name: Prepare package metadata
+        id: package-meta
+        run: |
+          repo_lower="$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          image_repository="ghcr.io/${repo_lower}"
+
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            app_version="${GITHUB_REF_NAME}"
+            image_tag="${GITHUB_REF_NAME}"
+          else
+            app_version="$(cat VERSION)"
+            if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+              image_tag="pr-${{ github.event.pull_request.number }}"
+            else
+              image_tag="$(echo "${GITHUB_REF_NAME}" | tr '[:upper:]' '[:lower:]' | tr '/' '-')"
+            fi
+          fi
+
+          image_ref="${image_repository}:${image_tag}"
+          echo "APP_VERSION=${app_version}" >> "$GITHUB_ENV"
+          echo "IMAGE_REPOSITORY=${image_repository}" >> "$GITHUB_ENV"
+          echo "IMAGE_TAG=${image_tag}" >> "$GITHUB_ENV"
+          echo "IMAGE_REF=${image_ref}" >> "$GITHUB_ENV"
+          echo "app_version=${app_version}" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${image_ref}" >> "$GITHUB_OUTPUT"
 
       - name: Prepare runtime files
         run: cp .env.example .env
@@ -112,12 +147,27 @@ jobs:
       - name: Validate Docker Compose configuration
         run: docker compose config
 
+      - name: Login to GitHub Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build Docker image
         run: |
           docker build \
-            --tag "${IMAGE_NAME}:${APP_VERSION}" \
+            --tag "${IMAGE_REF}" \
+            --tag "${IMAGE_REPOSITORY}:sha-${GITHUB_SHA::7}" \
             --tag "${IMAGE_NAME}:ci" \
             .
+
+      - name: Push Docker image
+        if: github.event_name == 'push'
+        run: |
+          docker push "${IMAGE_REF}"
+          docker push "${IMAGE_REPOSITORY}:sha-${GITHUB_SHA::7}"
 
       - name: Build distributive artifacts
         if: github.event_name == 'push'
@@ -127,23 +177,163 @@ jobs:
             --format=zip \
             --output "dist/${IMAGE_NAME}-${APP_VERSION}-source.zip" \
             HEAD
-          docker save "${IMAGE_NAME}:${APP_VERSION}" \
+          docker save "${IMAGE_REF}" \
             | gzip > "dist/${IMAGE_NAME}-${APP_VERSION}-docker-image.tar.gz"
           sha256sum dist/* > dist/SHA256SUMS
 
       - name: Upload distributive artifacts
         if: github.event_name == 'push'
-        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: botnethunter-distributive-${{ env.APP_VERSION }}
           path: dist/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
+
+  sast-sonarqube-job:
+    runs-on: ubuntu-latest
+    needs: [ syntax-check-job, import-check-job ]
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+      SONAR_PROJECT_KEY: botnethunter
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate SonarQube configuration
+        run: |
+          test -n "$SONAR_TOKEN" || (echo "SONAR_TOKEN secret is required" && exit 1)
+          test -n "$SONAR_HOST_URL" || (echo "SONAR_HOST_URL repository variable is required" && exit 1)
+
+      - name: SonarQube SAST scan
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
+
+      - name: Check critical SonarQube vulnerabilities
+        run: |
+          mkdir -p reports
+          curl --fail --silent --show-error \
+            --user "${SONAR_TOKEN}:" \
+            --get "${SONAR_HOST_URL}/api/issues/search" \
+            --data-urlencode "componentKeys=${SONAR_PROJECT_KEY}" \
+            --data-urlencode "types=VULNERABILITY" \
+            --data-urlencode "severities=BLOCKER,CRITICAL" \
+            --data-urlencode "resolved=false" \
+            --output reports/sonarqube-critical-vulnerabilities.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report_path = Path("reports/sonarqube-critical-vulnerabilities.json")
+          data = json.loads(report_path.read_text())
+          total = int(data.get("total", 0))
+          summary = Path("reports/sonarqube-critical-vulnerabilities.md")
+          summary.write_text(
+              "# SonarQube critical vulnerabilities report\n\n"
+              f"Open CRITICAL/BLOCKER vulnerabilities: {total}\n",
+              encoding="utf-8",
+          )
+          print(f"{total} critical/blocker vulnerabilities found")
+          raise SystemExit(1 if total else 0)
+          PY
+
+      - name: Upload SonarQube SAST report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonarqube-critical-vulnerabilities-report
+          path: reports/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  container-scan-trivy-job:
+    runs-on: ubuntu-latest
+    needs: [ package-job ]
+    if: github.event_name == 'push'
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Aqua Trivy JSON scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ needs.package-job.outputs.image-ref }}
+          format: json
+          output: trivy-image-report.json
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: os,library
+
+      - name: Run Aqua Trivy SARIF scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ needs.package-job.outputs.image-ref }}
+          format: sarif
+          output: trivy-image-report.sarif
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: os,library
+
+      - name: Upload Trivy report to GitHub Code Scanning
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image-report.sarif
+
+      - name: Upload Trivy container scanning reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-container-scanning-report
+          path: |
+            trivy-image-report.json
+            trivy-image-report.sarif
+          if-no-files-found: ignore
+          retention-days: 30
+
+  release-job:
+    runs-on: ubuntu-latest
+    needs: [ package-job, container-scan-trivy-job, sast-sonarqube-job ]
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      APP_VERSION: ${{ needs.package-job.outputs.app-version }}
+      IMAGE_REF: ${{ needs.package-job.outputs.image-ref }}
+    steps:
+      - name: Download distributive artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: botnethunter-distributive-${{ env.APP_VERSION }}
+          path: dist
+
+      - name: Create or update GitHub Release
+        run: |
+          notes="Автоматическая сборка BotNetHunter ${APP_VERSION}.
+
+          Docker image: ${IMAGE_REF}"
+
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" dist/* \
+              --title "BotNetHunter ${APP_VERSION}" \
+              --notes "${notes}"
+          fi
 
   deploy-job:
     runs-on: ubuntu-latest
-    needs: [ package-job ]
+    needs: [ package-job, sast-sonarqube-job, container-scan-trivy-job ]
+    if: github.event_name == 'push'
     environment: production
     steps:
       - name: Deploy

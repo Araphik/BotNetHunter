@@ -48,6 +48,54 @@ services:
       retries: 3
       start_period: 10s
 
+  sonar_db:
+    image: postgres:15-alpine
+    container_name: sonar_db
+    restart: unless-stopped
+    profiles:
+      - prod
+    environment:
+      POSTGRES_DB: ${SONAR_POSTGRES_DB:-sonar}
+      POSTGRES_USER: ${SONAR_POSTGRES_USER:-sonar}
+      POSTGRES_PASSWORD: ${SONAR_POSTGRES_PASSWORD:-sonar_change_me}
+    volumes:
+      - sonar_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  sonarqube:
+    image: sonarqube:lts-community
+    container_name: sonarqube
+    restart: unless-stopped
+    profiles:
+      - prod
+    depends_on:
+      sonar_db:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonar_db:5432/${SONAR_POSTGRES_DB:-sonar}
+      SONAR_JDBC_USERNAME: ${SONAR_POSTGRES_USER:-sonar}
+      SONAR_JDBC_PASSWORD: ${SONAR_POSTGRES_PASSWORD:-sonar_change_me}
+      SONAR_WEB_CONTEXT: ${SONAR_WEB_CONTEXT:-/sonar}
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    ulimits:
+      nofile:
+        soft: 131072
+        hard: 131072
+      nproc: 8192
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9000'"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+
   nginx:
     image: nginx:alpine
     container_name: botnethunter_nginx
@@ -64,6 +112,12 @@ services:
     depends_on:
       botnethunter:
         condition: service_healthy
+      sonarqube:
+        condition: service_healthy
 
 volumes:
   postgres_data:
+  sonar_db_data:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:

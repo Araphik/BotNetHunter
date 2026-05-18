@@ -235,6 +235,20 @@ make docker-up
 
 CORS включён только для origin из переменной `SECURITY_ALLOWED_ORIGINS`. Значение задаётся списком через запятую, без wildcard `*`.
 
+### SAST SonarQube
+
+Статический анализ кода настроен через SonarQube. В pipeline добавлен этап SAST, который запускает анализ, ожидает Quality Gate и отдельно проверяет отсутствие открытых уязвимостей уровня `CRITICAL` и `BLOCKER`.
+
+Инструкция по настройке SonarQube Server, переменных GitHub и локальному запуску описана в [docs/SAST.md](docs/SAST.md).
+
+### CI/CD и Container Scanning
+
+GitHub Actions workflow описан в [.github/workflows/ci.yml](.github/workflows/ci.yml): установка зависимостей, lint, SonarQube SAST, сборка дистрибутива, публикация Docker-образа в GitHub Container Registry, сканирование образа Aqua Trivy и создание GitHub Release для тегов.
+
+GitLab pipeline описан в [.gitlab-ci.yml](.gitlab-ci.yml) с аналогичными этапами для GitLab Container Registry и GitLab Releases.
+
+Подробности: [docs/GITHUB_ACTIONS.md](docs/GITHUB_ACTIONS.md), [docs/CI_CD.md](docs/CI_CD.md).
+
 ## 4 Требования к аппаратному обеспечению
 
 Минимальные требования для локального запуска:
