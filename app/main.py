@@ -1279,8 +1279,20 @@ async def enable_2fa(request: Request, otp_code: str = Form(...), temp_secret: s
         return RedirectResponse(url="/dashboard")
         
     if not verify_totp(temp_secret, otp_code):
+        import urllib.parse
+        account_name = user.email.split('@')[0] if '@' in user.email else user.email
+        uri = get_totp_uri(account_name, temp_secret)
+        qr_data = urllib.parse.quote(uri, safe='')
+        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={qr_data}"
+        
         return csrf_template_response(request, "setup_2fa.html", {
-            "request": request, "user": user, "error": "Неверный код. Попробуйте снова.", "qr_url": request.state.qr_url, "uri": request.state.uri, "temp_secret": temp_secret
+            "request": request, 
+            "user": user, 
+            "error": "Неверный код. Попробуйте снова.", 
+            "qr_url": qr_url, 
+            "uri": uri, 
+            "temp_secret": temp_secret,
+            "secret_key": temp_secret
         })
         
     user.totp_secret = temp_secret
