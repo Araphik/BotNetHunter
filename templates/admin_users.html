@@ -1,39 +1,11 @@
 {% extends "admin_base.html" %}
 {% block title %}Пользователи{% endblock %}
 {% set active_page = 'users' %}
-
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">Пользователи</h1>
     <div class="btn-group">
         <input type="text" class="form-control" id="userSearch" placeholder="Поиск по email">
-    </div>
-</div>
-
-<!-- Фильтры -->
-<div class="card shadow-sm mb-4">
-    <div class="card-body">
-        <div class="row g-3 align-items-end">
-            <div class="col-md-3">
-                <label class="form-label">Статус</label>
-                <select class="form-select" id="statusFilter">
-                    <option value="all">Все</option>
-                    <option value="active">Активные</option>
-                    <option value="blocked">Заблокированные</option>
-                    <option value="admin">Администраторы</option>
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Лимит запросов</label>
-                <input type="number" class="form-control" id="limitFilter" placeholder="Все">
-            </div>
-            <div class="col-md-3">
-                <button class="btn btn-outline-primary w-100" onclick="applyFilters()">Применить</button>
-            </div>
-            <div class="col-md-3">
-                <button class="btn btn-outline-secondary w-100" onclick="resetFilters()">Сбросить</button>
-            </div>
-        </div>
     </div>
 </div>
 
@@ -54,22 +26,22 @@
                     </tr>
                 </thead>
                 <tbody id="usersTable">
-                {% for user in users %}
-                    <tr data-email="{{ user.email }}" data-status="{{ 'blocked' if not user.is_active else 'admin' if user.is_admin else 'active' }}">
+                    {% for user in users %}
+                    <tr data-email="{{ user.email }}">
                         <td>{{ user.id }}</td>
                         <td>
                             {{ user.email }}
                             {% if user.is_admin %}
-                                <span class="badge bg-danger ms-1">ADMIN</span>
+                            <span class="badge bg-danger ms-1">ADMIN</span>
                             {% endif %}
                         </td>
                         <td>
                             {% if not user.is_active %}
-                                <span class="badge bg-danger">Заблокирован</span>
+                            <span class="badge bg-danger">Заблокирован</span>
                             {% elif user.is_admin %}
-                                <span class="badge bg-primary">Админ</span>
+                            <span class="badge bg-primary">Админ</span>
                             {% else %}
-                                <span class="badge bg-success">Активен</span>
+                            <span class="badge bg-success">Активен</span>
                             {% endif %}
                         </td>
                         <td>
@@ -82,33 +54,30 @@
                         <td>
                             <div class="btn-group btn-group-sm">
                                 {% if not user.is_admin %}
-                                    {% if user.is_active %}
-                                        <form method="post" action="/admin/users/{{ user.id }}/block" class="d-inline">
+                                {% if user.is_active %}
+                                <form method="post" action="/admin/users/{{ user.id }}/block" class="d-inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                            <button type="submit" class="btn btn-outline-danger" 
-                                                    onclick="return confirm('Заблокировать пользователя {{ user.email }}?')">
-                                                Заблокировать
-                                            </button>
-                                        </form>
-                                    {% else %}
-                                        <form method="post" action="/admin/users/{{ user.id }}/unblock" class="d-inline">
+                                    <button type="submit" class="btn btn-outline-danger"
+                                            onclick="return confirm('Заблокировать пользователя {{ user.email }}?')">
+                                        Заблокировать
+                                    </button>
+                                </form>
+                                {% else %}
+                                <form method="post" action="/admin/users/{{ user.id }}/unblock" class="d-inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                            <button type="submit" class="btn btn-outline-success">Разблокировать</button>
-                                        </form>
-                                    {% endif %}
+                                    <button type="submit" class="btn btn-outline-success">Разблокировать</button>
+                                </form>
                                 {% endif %}
-                                
-                                <button type="button" class="btn btn-outline-secondary" 
-                                        data-bs-toggle="modal" 
+                                {% endif %}
+                                <button type="button" class="btn btn-outline-secondary"
+                                        data-bs-toggle="modal"
                                         data-bs-target="#limitModal{{ user.id }}">
                                     Изменить лимит
                                 </button>
-                                
                                 <a href="/admin/users/{{ user.id }}/history" class="btn btn-outline-info">История</a>
                             </div>
                         </td>
                     </tr>
-                    
                     <!-- Модальное окно лимита -->
                     <div class="modal fade" id="limitModal{{ user.id }}" tabindex="-1">
                         <div class="modal-dialog">
@@ -121,7 +90,7 @@
                                     </div>
                                     <div class="modal-body">
                                         <label class="form-label">Лимит запросов в сутки</label>
-                                        <input type="number" name="new_limit" class="form-control" 
+                                        <input type="number" name="new_limit" class="form-control"
                                                value="{{ user.requests_limit }}" min="1" max="10000" required>
                                         <small class="text-muted">Использовано: {{ user.requests_today }}/{{ user.requests_limit }}</small>
                                     </div>
@@ -133,11 +102,11 @@
                             </div>
                         </div>
                     </div>
-                {% else %}
+                    {% else %}
                     <tr>
                         <td colspan="7" class="text-center text-muted py-4">Записи отсутствуют</td>
                     </tr>
-                {% endfor %}
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
@@ -151,7 +120,7 @@
     </div>
     <div class="card-body">
         <form method="post" action="/admin/settings/global_limit" class="row g-3 align-items-end">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="col-md-4">
                 <label class="form-label">Лимит по умолчанию для новых пользователей</label>
                 <input type="number" name="global_limit" class="form-control" value="{{ global_limit }}" min="1" max="10000">
@@ -169,32 +138,18 @@
 
 {% block scripts %}
 <script>
-function applyFilters() {
-    const status = document.getElementById('statusFilter').value;
-    const limit = document.getElementById('limitFilter').value;
-    const rows = document.querySelectorAll('#usersTable tr');
-    
-    rows.forEach(row => {
-        const rowStatus = row.dataset.status;
-        const showStatus = status === 'all' || rowStatus === status;
-        row.style.display = showStatus ? '' : 'none';
+    function resetFilters() {
+        document.getElementById('userSearch').value = '';
+        document.querySelectorAll('#usersTable tr').forEach(row => {
+            row.style.display = '';
+        });
+    }
+    document.getElementById('userSearch').addEventListener('input', function(e) {
+        const query = e.target.value.toLowerCase();
+        document.querySelectorAll('#usersTable tr').forEach(row => {
+            const email = row.dataset.email || '';
+            row.style.display = email.toLowerCase().includes(query) ? '' : 'none';
+        });
     });
-}
-
-function resetFilters() {
-    document.getElementById('statusFilter').value = 'all';
-    document.getElementById('limitFilter').value = '';
-    document.querySelectorAll('#usersTable tr').forEach(row => {
-        row.style.display = '';
-    });
-}
-
-document.getElementById('userSearch').addEventListener('input', function(e) {
-    const query = e.target.value.toLowerCase();
-    document.querySelectorAll('#usersTable tr').forEach(row => {
-        const email = row.dataset.email || '';
-        row.style.display = email.toLowerCase().includes(query) ? '' : 'none';
-    });
-});
 </script>
 {% endblock %}
