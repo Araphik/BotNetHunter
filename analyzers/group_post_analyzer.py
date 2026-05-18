@@ -24,7 +24,7 @@ class GroupPostAnalyzer(BaseAnalyzer):
         reasons = []
         
         if not posts:
-            return 0, []  # Убран штраф за отсутствие постов
+            return 0, []
             
         dates = [p.get('date') for p in posts if p.get('date')]
         texts = [p.get('text', '') for p in posts if p.get('text')]

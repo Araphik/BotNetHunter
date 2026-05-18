@@ -159,10 +159,10 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
         posts_with_engagement, owner_id=owner_id
     )
     
-    total_score = round(post_score * 0.6 + activity_score * 0.4)
+    # Итоговый скор: взвешенная сумма поста и активности
+    total_score = round(post_score * 0.5 + activity_score * 0.5)
     all_reasons = post_reasons + activity_reasons
     
-    # ИСПРАВЛЕНО: Логика формирования сводки. Четкое разделение по ключевым словам исключает перепутывание меток.
     reason_counts = defaultdict(int)
     for r in all_reasons:
         r_lower = r.lower()
@@ -185,7 +185,7 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
         elif "аномально много" in r_lower or "повышенное количество" in r_lower:
             reason_counts["Общий спам в группе"] += 1
 
-    summary = [{"label": k, "count": v} for k, v in sorted(reason_counts.items(), key=lambda x: (isinstance(x[1], str), x[1] if isinstance(x[1], int) else 0), reverse=True)]
+    summary = [{"label": k, "count": v} for k, v in sorted(reason_counts.items(), key=lambda x: x[1], reverse=True)]
     
     total_comments = sum(len(p.get('comments', [])) for p in posts_with_engagement)
     unique_commenters = len(set(

@@ -49,7 +49,8 @@ class ActivityAnalyzer(BaseAnalyzer):
         self.GENERIC_PHRASES = ['класс', 'круто', 'лайк', '+', 'спс', 'хорошо', 'годнота', '👍', '🔥']
 
     def analyze(self, posts_with_engagement: list, owner_id: str = None):
-        score = 0
+        total_penalty = 0
+        violation_count = 0
         reasons = []
         findings = []
         if not posts_with_engagement: return 0, [], findings
@@ -82,16 +83,17 @@ class ActivityAnalyzer(BaseAnalyzer):
         user_names = self._fetch_user_names(list(user_ids))
         total_posts_count = len(posts_with_engagement)
 
-        # Глобальный спам
         if total_comments >= 3:
             bot_ratio = bot_pattern_count / total_comments if total_comments > 0 else 0
             if bot_ratio > 0.7:
                 penalty = int(_get_settings('penalty_global_spam', 20))
-                score += penalty
+                total_penalty += penalty
+                violation_count += 1
                 reasons.append(f"Аномально много шаблонных комментариев ({bot_ratio*100:.0f}%)")
             elif bot_ratio > 0.4:
                 penalty = int(_get_settings('penalty_generic', 10))
-                score += penalty
+                total_penalty += penalty
+                violation_count += 1
                 reasons.append(f"Повышенное количество шаблонных комментариев ({bot_ratio*100:.0f}%)")
 
         for uid, data in user_data.items():
@@ -102,12 +104,12 @@ class ActivityAnalyzer(BaseAnalyzer):
 
             user_findings = []
 
-            # 1. Массовые лайки
             if total_posts_count > 0 and len(likes) > 0:
                 like_percentage = (len(likes) / total_posts_count) * 100
                 if like_percentage >= self.PERCENT_LIKED:
                     penalty = int(_get_settings('penalty_mass_likes', 10))
-                    score += penalty
+                    total_penalty += penalty
+                    violation_count += 1
                     reasons.append(f"Пользователь id{uid}: массовые лайки ({len(likes)}/{total_posts_count} постов)")
                     user_findings.append({'type': 'mass_likes', 'severity': 'MEDIUM', 'summary': f"Лайкнул {len(likes)}/{total_posts_count} записей ({like_percentage:.0f}%)", 'examples': []})
 
@@ -117,14 +119,14 @@ class ActivityAnalyzer(BaseAnalyzer):
                     findings.append({'user_id': uid, 'user_name': user_name, 'patterns': user_findings})
                 continue
 
-            # 2. Повторяющиеся
             if len(comments) >= self.COUNT_REPETITIVE:
                 clusters = self._cluster_similar_comments(comments, threshold=self.SIMILARITY_THRESHOLD)
                 repetitive_groups = [cl for cl in clusters if len(cl['comments']) >= self.COUNT_REPETITIVE]
                 if repetitive_groups:
                     repetitive_groups.sort(key=lambda x: len(x['comments']), reverse=True)
                     penalty = int(_get_settings('penalty_repetitive', 12))
-                    score += penalty
+                    total_penalty += penalty
+                    violation_count += 1
                     reasons.append(f"Пользователь id{uid}: повторяющиеся комментарии")
                     examples = []
                     for group in repetitive_groups:
@@ -133,16 +135,15 @@ class ActivityAnalyzer(BaseAnalyzer):
                         examples.append({'pattern': short_text, 'count': len(group['comments']), 'instances': instances})
                     user_findings.append({'type': 'repetitive_comments', 'severity': 'HIGH', 'summary': f"Найдено {len(repetitive_groups)} групп повторяющихся текстов", 'examples': examples})
 
-            # 3. Шаблонные
             generic_count = sum(1 for c in comments if self._is_generic_comment(c['text']))
             if generic_count >= len(comments) * 0.6:
                 penalty = int(_get_settings('penalty_generic', 8))
-                score += penalty
+                total_penalty += penalty
+                violation_count += 1
                 reasons.append(f"Пользователь id{uid}: {generic_count}/{len(comments)} шаблонных комментариев")
                 examples_list = [{'link': self._build_comment_link(c['post_id'], c['comment_id'], owner_id), 'time': _format_msk_time(c['date']), 'text': c['text'][:200]} for c in comments if self._is_generic_comment(c['text'])]
                 user_findings.append({'type': 'generic_comments', 'severity': 'LOW', 'summary': f"{generic_count}/{len(comments)} комментариев соответствуют шаблонным паттернам", 'examples': [{'instances': examples_list}]})
 
-            # 4. Быстрая серия
             if len(times) >= 3:
                 sorted_comments = sorted(comments, key=lambda x: x['date'] or 0)
                 sorted_times = [c['date'] for c in sorted_comments if c['date']]
@@ -164,11 +165,11 @@ class ActivityAnalyzer(BaseAnalyzer):
                         else: i += 1
                     if rapid_series_list:
                         penalty = int(_get_settings('penalty_rapid', 15))
-                        score += penalty * len(rapid_series_list)
+                        total_penalty += penalty
+                        violation_count += 1
                         reasons.append(f"Пользователь id{uid}: {len(rapid_series_list)} серий быстрых комментариев")
                         user_findings.extend(rapid_series_list)
 
-            # 5. Строгий интервал (ИСПРАВЛЕНО: добавлены примеры)
             if len(comments) >= 3:
                 sorted_c = sorted(comments, key=lambda x: x['date'] or 0)
                 times_list = [c['date'] for c in sorted_c if c['date']]
@@ -181,7 +182,8 @@ class ActivityAnalyzer(BaseAnalyzer):
                             max_dev = max(abs(iv - avg_w) for iv in w_intervals)
                             if avg_w >= self.MIN_INTERVAL_FOR_REGULAR_CHECK and max_dev <= self.REGULAR_INTERVAL_TOLERANCE_SEC:
                                 penalty = int(_get_settings('penalty_regular', 10))
-                                score += penalty
+                                total_penalty += penalty
+                                violation_count += 1
                                 reasons.append(f"Пользователь id{uid}: серия из 3 комментариев с интервалом ~{_format_duration(avg_w)}")
                                 examples_instances = [{'link': self._build_comment_link(sorted_c[idx]['post_id'], sorted_c[idx]['comment_id'], owner_id), 'time': _format_msk_time(sorted_c[idx]['date']), 'text': sorted_c[idx]['text'][:200]} for idx in range(i, i+3)]
                                 user_findings.append({
@@ -192,14 +194,14 @@ class ActivityAnalyzer(BaseAnalyzer):
                                 })
                                 break
 
-            # 6. Ночная активность (ИСПРАВЛЕНО: добавлены примеры)
             if len(comments) >= 3:
                 times_list = [c['date'] for c in comments if c['date']]
                 if times_list:
                     night_count = sum(1 for ts in times_list if 3 <= datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(MSK_TZ).hour <= 5)
                     if night_count / len(times_list) >= 0.5:
                         penalty = int(_get_settings('penalty_night', 8))
-                        score += penalty
+                        total_penalty += penalty
+                        violation_count += 1
                         reasons.append(f"Пользователь id{uid}: {night_count}/{len(times_list)} комментариев ночью (03-05)")
                         examples_instances = [{'link': self._build_comment_link(c['post_id'], c['comment_id'], owner_id), 'time': _format_msk_time(c['date']), 'text': c['text'][:200]} for c in comments if c['date'] and 3 <= datetime.fromtimestamp(c['date'], tz=timezone.utc).astimezone(MSK_TZ).hour <= 5]
                         user_findings.append({
@@ -209,12 +211,12 @@ class ActivityAnalyzer(BaseAnalyzer):
                             'examples': [{'instances': examples_instances}]
                         })
 
-            # 7. Новый аккаунт с высокой активностью
             if uid > self.NEW_ACC_ID_THRESHOLD:
                 total_activity = len(comments) + len(likes)
                 if total_activity >= self.NEW_ACC_ACTIVITY:
                     penalty = int(_get_settings('penalty_new_acc', 10))
-                    score += penalty
+                    total_penalty += penalty
+                    violation_count += 1
                     reasons.append(f"Пользователь id{uid}: высокая активность нового аккаунта")
                     user_findings.append({
                         'type': 'new_account_activity',
@@ -227,15 +229,22 @@ class ActivityAnalyzer(BaseAnalyzer):
                 user_name = user_names.get(uid, f"id{uid}")
                 findings.append({'user_id': uid, 'user_name': user_name, 'patterns': user_findings})
 
-        # 8. Межпользовательские совпадения
         network_findings = self._detect_coordinated_comments(user_data, owner_id)
         if network_findings:
             penalty = int(_get_settings('penalty_coordination', 15))
-            score += penalty
+            total_penalty += penalty
+            violation_count += 1
             reasons.append(f"Обнаружено {len(network_findings)} групп скоординированных комментариев")
             findings.append({'type': 'network_coordination', 'groups': network_findings})
 
-        return min(score, 100), reasons, findings
+        risk_coefficient = int(_get_settings('risk_coefficient', 5))
+        if total_comments > 0:
+            calculated_score = (total_penalty * risk_coefficient) / total_comments * 1000
+        else:
+            calculated_score = 0
+        final_score = min(calculated_score, 100)
+        
+        return final_score, reasons, findings
 
     def _is_generic_comment(self, text):
         text_lower = text.lower().strip()

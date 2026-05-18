@@ -912,23 +912,30 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
 
 
 DEFAULT_SETTINGS = {
+    # Основные параметры анализа
+    'risk_coefficient': 5,
+    'posts_limit': 100,
+    
     # Параметры анализа и выявления нарушений
-    'similarity_threshold': 85, 
-    'count_repetitive': 3, 
+    'similarity_threshold': 0.85,
+    'count_repetitive': 3,
     'rapid_comment_window_min': 3,
-    'comments_per_time_window': 5, 
-    'regular_interval_tolerance_sec': 10, 
+    'comments_per_time_window': 5,
+    'regular_interval_tolerance_sec': 10,
     'min_interval_for_regular_check': 30,
-    'percent_liked': 80, 
-    'cross_user_min_group_size': 3, 
-    'new_acc_activity': 15, 
+    'percent_liked': 80,
+    'cross_user_min_group_size': 3,
+    'new_acc_activity': 15,
     'new_acc_id_threshold': 850_000_000,
+    
     # Штрафы за активность под публикациями
     'penalty_mass_likes': 10, 'penalty_repetitive': 12, 'penalty_generic': 8, 'penalty_rapid': 15,
     'penalty_regular': 10, 'penalty_night': 8, 'penalty_new_acc': 10, 'penalty_coordination': 15, 'penalty_global_spam': 20,
+    
     # Штрафы за публикации группы
     'penalty_high_freq': 12, 'penalty_repetitive_content': 18, 'penalty_link_spam': 10,
     'penalty_night_posting': 10, 'penalty_caps': 8,
+    
     # Штрафы за профиль нарушителя
     'penalty_prof_new_2024': 20, 'penalty_prof_new_2022': 12, 'penalty_prof_no_photo': 18,
     'penalty_prof_empty_0': 25, 'penalty_prof_empty_1': 15, 'penalty_prof_0_friends': 10,

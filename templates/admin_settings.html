@@ -11,10 +11,24 @@
         <a href="/logout" class="btn btn-outline-secondary btn-sm">Выйти</a>
     </div>
 </div>
-
 <form method="post" action="/admin/settings/save" id="settingsForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     
+    <!-- 0. Основные параметры анализа -->
+    <div class="card shadow-sm mb-4 border-0 border-primary border-2">
+        <div class="card-header bg-primary text-white py-3">
+            <h5 class="mb-0 fw-bold">0. Основные параметры анализа</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Коэффициент оценки</label>
+                    <input type="number" step="1" min="1" max="50" name="risk_coefficient" value="{{ settings.risk_coefficient }}" class="form-control" required>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 1. Параметры анализа и выявления нарушений -->
     <div class="card shadow-sm mb-4 border-0">
         <div class="card-header bg-white py-3">
@@ -53,6 +67,16 @@
                 <div class="col-md-6">
                     <label class="form-label fw-medium">Порог ID для определения нового аккаунта</label>
                     <input type="number" step="1" min="1000000" name="new_acc_id_threshold" value="{{ settings.new_acc_id_threshold }}" class="form-control" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Минимальное время интервала для детектирования (сек)</label>
+                    <input type="number" step="1" min="1" name="min_interval_for_regular_check" value="{{ settings.min_interval_for_regular_check }}" class="form-control" required>
+                    <small class="text-muted">Минимальный интервал между комментариями для выявления регулярности</small>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium">Погрешность интервала (сек)</label>
+                    <input type="number" step="1" min="1" name="regular_interval_tolerance_sec" value="{{ settings.regular_interval_tolerance_sec }}" class="form-control" required>
+                    <small class="text-muted">Допустимое отклонение от среднего интервала</small>
                 </div>
             </div>
         </div>
