@@ -18,11 +18,14 @@ class User(Base):
     requests_today = Column(Integer, default=0)
     last_request_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+    totp_secret = Column(String(32), nullable=True)
+    is_2fa_enabled = Column(Boolean, default=False)
+    
     history = relationship("AnalysisHistory", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
 
     def __repr__(self):
         return f"<User(email='{self.email}', is_admin={self.is_admin})>"
-
 
 class AnalysisHistory(Base):
     __tablename__ = "analysis_history"

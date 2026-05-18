@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Подтверждение входа{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-5 mt-5">
+        <div class="card shadow">
+            <div class="card-body p-4">
+                <h3 class="text-center mb-4">Двухфакторная аутентификация</h3>
+                {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+                <p class="text-muted small mb-4 text-center">Введите 6-значный код из приложения-аутентификатора</p>
+                <form method="post" action="/login/2fa">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="mb-3">
+                        <label class="form-label">Код подтверждения</label>
+                        <input type="text" name="otp_code" class="form-control text-center fs-4" maxlength="6" pattern="\d{6}" inputmode="numeric" autocomplete="one-time-code" required autofocus>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Подтвердить</button>
+                </form>
+                <div class="text-center mt-3">
+                    <a href="/logout" class="text-decoration-none small text-muted">Отменить вход</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
