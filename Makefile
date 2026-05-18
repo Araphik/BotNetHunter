@@ -6,7 +6,10 @@ HOST       ?= 127.0.0.1
 PORT       ?= 8000
 IMAGE      ?= botnethunter
 
-.PHONY: install check run db-up wait-db db-down clean init docker-build docker-up docker-up-prod docker-down rebuild docker-logs docker-shell version version-bump-patch version-bump-minor version-bump-major version-set
+.PHONY: install check run db-up wait-db db-down clean init \
+docker-build docker-up docker-up-prod docker-down docker-down-prod \
+docker-clean-prod rebuild docker-logs docker-shell \
+version version-bump-patch version-bump-minor version-bump-major version-set
 
 # — Локальная разработка —
 
@@ -60,6 +63,12 @@ docker-up-prod:
 docker-down:
 	docker compose down
 
+docker-down-prod:
+	docker compose --profile prod down --remove-orphans
+
+docker-clean-prod:
+	docker compose --profile prod down -v --remove-orphans --rmi local
+
 rebuild: docker-down docker-build docker-up
 	@echo "Перезапуск завершен"
 
@@ -68,7 +77,7 @@ docker-logs:
 
 docker-shell:
 	docker compose exec botnethunter bash
-	
+
 version:
 	@cat VERSION
 
@@ -96,7 +105,7 @@ version-bump-major:
 	new_version="$$(($$major + 1)).0.0"; \
 	echo "$$new_version" > VERSION; \
 	echo "Updated: $$current -> $$new_version"
-	
+
 version-set:
 	@if [ -z "$(word 2,$(MAKECMDGOALS))" ]; then \
 		echo "Usage: make version-set 1.0.0"; \

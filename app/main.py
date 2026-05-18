@@ -30,8 +30,15 @@ from config.settings import get_app_version
 from utils.logger import logger, request_id_var
 from app.rate_limiter import rate_limiter
 from app.csrf import generate_csrf_token, validate_csrf_token, CSRF_COOKIE_NAME, CSRF_COOKIE_MAX_AGE
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Counter
 import logging
 
+rate_limit_counter = Counter(
+    'http_requests_rate_limited_total',
+    'Total number of rate limited requests',
+    ['path']
+)
 
 # Часовой пояс Москвы (UTC+3)
 MSK_TZ = timezone(timedelta(hours=3))
@@ -175,6 +182,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+Instrumentator(should_group_status_codes=False).instrument(app).expose(app)
 Base.metadata.create_all(bind=engine)
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
@@ -277,7 +285,8 @@ async def rate_limit_middleware(request: Request, call_next):
 
     allowed, remaining = rate_limiter.is_allowed(rate_key)
     if not allowed:
-        return JSONResponse(
+        rate_limit_counter.labels(path=path).inc()
+       	return JSONResponse(
             status_code=429,
             content={"detail": "Too Many Requests. Попробуйте через минуту."},
             headers={
