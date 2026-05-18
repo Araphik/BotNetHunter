@@ -19,7 +19,8 @@ from app.models import (
     AnalyzeRequest, AnalyzeResponse, HistoryItemResponse, HistoryListResponse, APIError
 )
 from app.auth import (
-    get_password_hash, verify_password, create_access_token, decode_token, is_admin_login
+    get_password_hash, verify_password, create_access_token, decode_token, is_admin_login, generate_totp_secret,
+    get_totp_uri, verify_totp, create_temp_2fa_token, decode_temp_2fa_token
 )
 from config.settings import BASE_DIR, APP_VERSION
 from config.weights import DEFAULT_REQUESTS_LIMIT, DEFAULT_MODULE_WEIGHTS
@@ -286,7 +287,8 @@ async def rate_limit_middleware(request: Request, call_next):
     allowed, remaining = rate_limiter.is_allowed(rate_key)
     if not allowed:
         rate_limit_counter.labels(path=path).inc()
-       	return JSONResponse(
+        
+        return JSONResponse(
             status_code=429,
             content={"detail": "Too Many Requests. Попробуйте через минуту."},
             headers={
@@ -323,22 +325,19 @@ async def security_headers_middleware(request: Request, call_next):
             status_code=403,
             content={"detail": "CORS: origin not allowed"},
         )
-
     response = await call_next(request)
-
     # Content-Security-Policy
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self' https://cdn.jsdelivr.net; "
         "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
-        "img-src 'self' data:; "
+        "img-src 'self' data: https://api.qrserver.com; "
         "font-src 'self' https://cdn.jsdelivr.net; "
         "connect-src 'self'; "
         "frame-ancestors 'none';"
     )
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-
     # CORS — только для явно разрешённых origin
     if origin in ALLOWED_ORIGINS:
         response.headers["Access-Control-Allow-Origin"] = origin
@@ -346,9 +345,7 @@ async def security_headers_middleware(request: Request, call_next):
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Request-ID"
         response.headers["Vary"] = "Origin"
-
     return response
-
 
 @app.middleware("http")
 async def add_version_to_templates(request: Request, call_next):
@@ -367,23 +364,31 @@ async def home(request: Request):
 async def login(request: Request, email: str = Form(...), password: str = Form(...), csrf_token: str = Form(...), db: Session = Depends(get_db)):
     if not validate_csrf_token(request, csrf_token):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
+        
     if is_admin_login(email, password):
         response = RedirectResponse(url="/admin", status_code=303)
         response.set_cookie("admin_email", ADMIN_EMAIL, httponly=True, max_age=86400, secure=True, samesite="lax")
         response.set_cookie("admin_token", "admin_session", httponly=True, max_age=86400, secure=True, samesite="lax")
         return response
-    
+        
     user = db.query(User).filter(User.email == email).first()
     if not user or not verify_password(password, user.hashed_password):
         return csrf_template_response(request, "login.html", {"error": "Неверный email или пароль"})
+        
     if not user.is_active:
         return csrf_template_response(request, "login.html", {"error": "Аккаунт заблокирован"})
-    
+        
+    if user.is_2fa_enabled and user.totp_secret:
+        temp_token = create_temp_2fa_token({"sub": user.email})
+        response = RedirectResponse(url="/login/2fa", status_code=303)
+        response.set_cookie("temp_2fa", temp_token, httponly=True, max_age=300, secure=True, samesite="lax")
+        return response
+        
+    # Стандартный вход без 2FA
     token = create_access_token(data={"sub": user.email})
     response = RedirectResponse(url="/dashboard", status_code=303)
     response.set_cookie(key="token", value=token, httponly=True, max_age=86400, secure=True, samesite="lax")
     return response
-
 
 @app.get("/register", response_class=HTMLResponse, tags=["Web UI"], include_in_schema=False)
 async def register_page(request: Request):
@@ -1209,6 +1214,90 @@ async def version_page(request: Request):
         }
     )
     
+
+@app.get("/login/2fa", response_class=HTMLResponse, tags=["Web UI"], include_in_schema=False)
+async def login_2fa_page(request: Request):
+    temp = request.cookies.get("temp_2fa")
+    if not temp or not decode_temp_2fa_token(temp):
+        return RedirectResponse(url="/", status_code=303)
+    return csrf_template_response(request, "login_2fa.html", {"request": request})
+
+@app.post("/login/2fa", tags=["Web UI"], include_in_schema=False)
+async def login_2fa_verify(request: Request, otp_code: str = Form(...), csrf_token: str = Form(...), db: Session = Depends(get_db)):
+    if not validate_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+        
+    temp = request.cookies.get("temp_2fa")
+    payload = decode_temp_2fa_token(temp) if temp else None
+    if not payload:
+        return RedirectResponse(url="/", status_code=303)
+        
+    user = db.query(User).filter(User.email == payload["sub"]).first()
+    if not user or not verify_totp(user.totp_secret, otp_code):
+        return csrf_template_response(request, "login_2fa.html", {"error": "Неверный код подтверждения"})
+        
+
+    token = create_access_token(data={"sub": user.email})
+    response = RedirectResponse(url="/dashboard", status_code=303)
+    response.set_cookie(key="token", value=token, httponly=True, max_age=86400, secure=True, samesite="lax")
+    response.delete_cookie("temp_2fa")
+    return response
+
+@app.get("/account/2fa/setup", response_class=HTMLResponse, tags=["Web UI"], include_in_schema=False)
+async def setup_2fa_page(request: Request, db: Session = Depends(get_db)):
+    user = get_user_from_cookie(request, db)
+    if not user:
+        return RedirectResponse(url="/")
+    if user.is_2fa_enabled:
+        return RedirectResponse(url="/dashboard")
+        
+    secret = generate_totp_secret()
+    # Используем только имя пользователя (без @domain) для лучшего совместимости
+    account_name = user.email.split('@')[0] if '@' in user.email else user.email
+    uri = get_totp_uri(account_name, secret)
+    # QR через публичный API - правильно кодируем URL
+    import urllib.parse
+    qr_data = urllib.parse.quote(uri, safe='')
+    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={qr_data}"
+    
+    return csrf_template_response(request, "setup_2fa.html", {
+        "request": request, 
+        "user": user, 
+        "qr_url": qr_url, 
+        "uri": uri, 
+        "temp_secret": secret,
+        "secret_key": secret  # Добавляем чистый секрет для отображения
+    })
+
+@app.post("/account/2fa/enable", tags=["Web UI"], include_in_schema=False)
+async def enable_2fa(request: Request, otp_code: str = Form(...), temp_secret: str = Form(...), csrf_token: str = Form(...), db: Session = Depends(get_db)):
+    if not validate_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+        
+    user = get_user_from_cookie(request, db)
+    if not user or user.is_2fa_enabled:
+        return RedirectResponse(url="/dashboard")
+        
+    if not verify_totp(temp_secret, otp_code):
+        return csrf_template_response(request, "setup_2fa.html", {
+            "request": request, "user": user, "error": "Неверный код. Попробуйте снова.", "qr_url": request.state.qr_url, "uri": request.state.uri, "temp_secret": temp_secret
+        })
+        
+    user.totp_secret = temp_secret
+    user.is_2fa_enabled = True
+    db.commit()
+    return RedirectResponse(url="/dashboard?2fa_enabled=1", status_code=303)
+
+@app.post("/account/2fa/disable", tags=["Web UI"], include_in_schema=False)
+async def disable_2fa(request: Request, db: Session = Depends(get_db)):
+    user = get_user_from_cookie(request, db)
+    if not user:
+        return RedirectResponse(url="/")
+    user.totp_secret = None
+    user.is_2fa_enabled = False
+    db.commit()
+    return RedirectResponse(url="/dashboard?2fa_disabled=1", status_code=303)
+
 @app.on_event("startup")
 async def startup_event():
     import asyncio

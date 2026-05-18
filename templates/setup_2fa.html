@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Подключение 2FA{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-7 col-lg-5">
+        <div class="card shadow border-primary">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Подключение 2FA</h5>
+                <a href="/dashboard" class="btn btn-sm btn-light">Назад</a>
+            </div>
+            <div class="card-body p-4">
+                {% if error %}
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    {{ error }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endif %}
+                
+                <p class="text-muted small mb-3"><strong>Способ 1:</strong> Отсканируйте QR-код</p>
+                <div class="text-center mb-4 p-3 bg-light rounded">
+                    <img src="{{ qr_url }}" alt="QR Code для настройки 2FA" class="img-fluid rounded border bg-white" style="max-width: 200px;" onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22%3E%3Crect fill=%22%23fff%22 width=%22200%22 height=%22200%22/%3E%3Ctext fill=%22%23dc3545%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3EОшибка загрузки QR%3C/text%3E%3C/svg%3E';">
+                    <small class="text-muted d-block mt-2">Наведите камеру приложения на QR-код</small>
+                </div>
+                
+                <div class="text-center my-3">
+                    <span class="text-muted small">или</span>
+                </div>
+                
+                <p class="text-muted small mb-3"><strong>Способ 2:</strong> Введите ключ вручную</p>
+                <div class="mb-4">
+                    <label class="form-label small text-muted">Ключ настройки:</label>
+                    <div class="alert alert-light text-center py-3">
+                        <code class="fs-6" style="word-break: break-all; letter-spacing: 1px;">
+                            {{ secret_key }}
+                        </code>
+                    </div>
+                    <small class="text-muted d-block">
+                        В Google Authenticator нажмите <strong>"+"</strong> → <strong>"Ввести ключ"</strong> → введите этот ключ
+                    </small>
+                </div>
+                
+                <form method="post" action="/account/2fa/enable" id="enable2faForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="temp_secret" value="{{ temp_secret }}">
+                    <div class="mb-3">
+                        <label for="otp_code" class="form-label fw-bold">Введите 6-значный код из приложения</label>
+                        <input 
+                            type="text" 
+                            name="otp_code" 
+                            id="otp_code"
+                            class="form-control text-center fs-4" 
+                            maxlength="6" 
+                            pattern="\d{6}" 
+                            inputmode="numeric" 
+                            autocomplete="one-time-code"
+                            placeholder="000000"
+                            required
+                        >
+                    </div>
+                    <button type="submit" class="btn btn-success w-100 btn-lg">
+                        Подключить 2FA
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Автофокус на поле ввода кода
+document.addEventListener('DOMContentLoaded', function() {
+    const otpInput = document.getElementById('otp_code');
+    if (otpInput) {
+        otpInput.focus();
+    }
+});
+</script>
+{% endblock %}
