@@ -35,12 +35,6 @@ Pipeline настроен в `.gitlab-ci.yml` и запускается для:
 botnethunter
 ```
 
-Quality Gate ожидается прямо в job `sast_sonarqube_scan` за счет настройки:
-
-```properties
-sonar.qualitygate.wait=true
-```
-
 Если SonarQube находит открытые vulnerability уровня `CRITICAL` или `BLOCKER`, job `sast_sonarqube_report` завершится ошибкой.
 
 ## Trivy

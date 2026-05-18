@@ -7,7 +7,6 @@
 - `sonar-project.properties` в корне репозитория.
 - GitLab CI jobs `sast_sonarqube_scan` и `sast_sonarqube_report`.
 - GitHub Actions job `sast-sonarqube-job`, если проект запускается в GitHub.
-- Проверка Quality Gate с ожиданием результата анализа.
 - Отдельная проверка SonarQube API на отсутствие открытых уязвимостей уровня `CRITICAL` и `BLOCKER`.
 
 ## Настройка SonarQube Server
@@ -49,6 +48,5 @@ make sonar-scan
 После выполнения SAST job в pipeline:
 
 - отчет анализа доступен в SonarQube в проекте `botnethunter`;
-- Quality Gate должен быть `PASSED`;
 - шаг проверки критических уязвимостей должен показать `0 critical/blocker vulnerabilities found`;
 - артефакты pipeline содержат JSON-ответ SonarQube и краткий Markdown-отчет.

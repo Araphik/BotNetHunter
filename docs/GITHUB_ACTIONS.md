@@ -14,7 +14,7 @@ Pipeline запускается для:
 1. `build-job` - установка зависимостей.
 2. `syntax-check-job` - Ruff lint и `compileall`.
 3. `import-check-job` - импорт FastAPI-приложения.
-4. `sast-sonarqube-job` - SonarQube SAST, Quality Gate и проверка отсутствия открытых `CRITICAL`/`BLOCKER` vulnerabilities.
+4. `sast-sonarqube-job` - SonarQube SAST и проверка отсутствия открытых `CRITICAL`/`BLOCKER` vulnerabilities.
 5. `package-job` - сборка Docker-образа, публикация в GitHub Container Registry и формирование дистрибутивов.
 6. `container-scan-trivy-job` - сканирование Docker-образа через Aqua Trivy.
 7. `release-job` - создание или обновление GitHub Release для тегов.
