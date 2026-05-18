@@ -11,6 +11,7 @@ permissions:
   contents: write
   packages: write
   security-events: write
+  actions: read
 
 jobs:
   build-job:
@@ -266,6 +267,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Run Aqua Trivy table scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ needs.package-job.outputs.image-ref }}
+          format: table
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: os,library
+
       - name: Run Aqua Trivy JSON scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -288,7 +298,7 @@ jobs:
 
       - name: Upload Trivy report to GitHub Code Scanning
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-image-report.sarif
 
