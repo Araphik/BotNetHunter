@@ -370,11 +370,17 @@ async def security_headers_middleware(request: Request, call_next):
         )
     response = await call_next(request)
     # Content-Security-Policy
+    script_src = "'self' https://cdn.jsdelivr.net"
+    img_src = "'self' data: https://api.qrserver.com"
+    if request.url.path.startswith("/api-docs"):
+        script_src += " 'unsafe-inline'"
+        img_src += " https://fastapi.tiangolo.com"
+
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' https://cdn.jsdelivr.net; "
+        f"script-src {script_src}; "
         "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
-        "img-src 'self' data: https://api.qrserver.com; "
+        f"img-src {img_src}; "
         "font-src 'self' https://cdn.jsdelivr.net; "
         "connect-src 'self'; "
         "frame-ancestors 'none';"
