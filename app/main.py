@@ -20,7 +20,8 @@ from app.models import (
 )
 from app.auth import (
     get_password_hash, verify_password, create_access_token, decode_token, is_admin_login, generate_totp_secret,
-    get_totp_uri, verify_totp, create_temp_2fa_token, decode_temp_2fa_token
+    get_totp_uri, verify_totp, create_temp_2fa_token, decode_temp_2fa_token,
+    create_admin_token, is_admin_token
 )
 from config.settings import BASE_DIR, APP_VERSION
 from config.weights import DEFAULT_REQUESTS_LIMIT, DEFAULT_MODULE_WEIGHTS
