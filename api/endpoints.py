@@ -35,19 +35,29 @@ def _get_param_value(module_name: str, param_key: str, default: int) -> int:
         return default
 
 
+def _normalize_target(target: str) -> str:
+    """Преобразует ссылку VK в чистый username"""
+    if not target.startswith('http'):
+        return target
+    
+    match = re.search(r'vk\.(?:com|ru)/([^/?#]+)', target)
+    if match:
+        return match.group(1)
+    
+    return target
+
+
 def _normalize_group_id(group_input: str) -> str:
-    """Преобразует ссылку или screen_name в формат, понятный VK API"""
-    # Если уже числовой ID (возможно с минусом)
+    """Преобразует ссылку в формат, понятный VK API"""
     if re.match(r'^-?\d+$', group_input):
         return group_input
-    
-    # Если полная ссылка вида https://vk.com/historia или https://vk.com/club123
+
     if group_input.startswith('http'):
-        match = re.search(r'vk\.com/([^/?#]+)', group_input)
+        match = re.search(r'vk\.(?:com|ru)/([^/?#]+)', group_input)
         if match:
-            return match.group(1)
+            screen_name = match.group(1)
+            return screen_name
     
-    # Если просто screen_name (historia, public123, club456)
     return group_input
 
 
