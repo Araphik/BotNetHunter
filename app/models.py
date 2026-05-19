@@ -7,7 +7,23 @@ from pydantic import BaseModel, Field, validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
+
+class Session(Base):
+    __tablename__ = "sessions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token = Column(String(500), unique=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_activity = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    user_agent = Column(String(500), nullable=True)
+    ip_address = Column(String(50), nullable=True)
+    
+    user = relationship("User", back_populates="sessions")
+
 class User(Base):
+    
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
@@ -21,6 +37,7 @@ class User(Base):
     
     totp_secret = Column(String(32), nullable=True)
     is_2fa_enabled = Column(Boolean, default=False)
+    sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
     
     history = relationship("AnalysisHistory", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
 

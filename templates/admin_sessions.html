@@ -1,0 +1,70 @@
+{% extends "admin_base.html" %}
+{% block title %}Активные сессии{% endblock %}
+{% set active_page = 'sessions' %}
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Активные сессии</h1>
+    <a href="/admin" class="btn btn-outline-secondary">← Назад</a>
+</div>
+
+<div class="alert alert-info">
+    <strong>Информация:</strong> Управление активными сессиями пользователей. 
+    Деактивация сессии немедленно завершает вход пользователя.
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Пользователь</th>
+                        <th>IP адрес</th>
+                        <th>Устройство</th>
+                        <th>Создана</th>
+                        <th>Последняя активность</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for session in sessions %}
+                    <tr>
+                        <td>{{ session.id }}</td>
+                        <td>
+                            {% if session.user %}
+                            {{ session.user.email }}
+                            {% else %}
+                            <span class="text-muted">Администратор</span>
+                            {% endif %}
+                        </td>
+                        <td><code>{{ session.ip_address or 'Неизвестно' }}</code></td>
+                        <td>
+                            <small class="text-muted">
+                                {{ session.user_agent[:50] if session.user_agent else 'Неизвестно' }}...
+                            </small>
+                        </td>
+                        <td class="small">{{ session.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                        <td class="small">{{ session.last_activity.strftime('%d.%m.%Y %H:%M') }}</td>
+                        <td>
+                            <form method="post" action="/admin/sessions/{{ session.id }}/deactivate" class="d-inline">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"
+                                        onclick="return confirm('Завершить сессию? Пользователь будет разлогинен.');">
+                                    Завершить сессию
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">
+                            Активные сессии отсутствуют
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

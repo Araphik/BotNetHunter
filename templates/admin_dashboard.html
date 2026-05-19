@@ -1,7 +1,6 @@
 {% extends "admin_base.html" %}
 {% block title %}Обзор системы{% endblock %}
 {% set active_page = 'dashboard' %}
-
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">Обзор системы</h1>
@@ -60,8 +59,8 @@
     <div class="card-body">
         <div class="row g-3">
             <div class="col-md-4">
-                <a href="/admin/weights" class="btn btn-outline-primary w-100">
-                    Настройка весов модулей
+                <a href="/admin/settings" class="btn btn-outline-primary w-100">
+                    Настройки анализа
                 </a>
             </div>
             <div class="col-md-4">
@@ -70,10 +69,10 @@
                 </a>
             </div>
             <div class="col-md-4">
-   	  	 <a href="https://botnethunter.duckdns.org/grafana/" target="_blank" class="btn btn-outline-info w-100">
-       		    Системный мониторинг
-    		</a>
-	    </div>
+                <a href="https://botnethunter.duckdns.org/grafana/" target="_blank" class="btn btn-outline-info w-100">
+                    Системный мониторинг
+                </a>
+            </div>
         </div>
     </div>
 </div>
@@ -97,7 +96,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                {% for activity in recent_activities %}
+                    {% for activity in recent_activities %}
                     <tr>
                         <td class="small">{{ activity.created_at.strftime('%H:%M') }}</td>
                         <td>{{ activity.user_email }}</td>
@@ -109,19 +108,19 @@
                         <td>{{ activity.target or '—' }}</td>
                         <td>
                             {% if activity.risk_level %}
-                                <span class="badge bg-{{ 'success' if activity.risk_level == 'NORMAL' else 'warning' if activity.risk_level == 'LOW' else 'danger' if activity.risk_level == 'HIGH' else 'secondary' }}">
-                                    {{ activity.risk_level }}
-                                </span>
+                            <span class="badge bg-{{ 'success' if activity.risk_level == 'NORMAL' else 'warning' if activity.risk_level == 'LOW' else 'danger' if activity.risk_level == 'HIGH' else 'secondary' }}">
+                                {{ activity.risk_level }}
+                            </span>
                             {% else %}
-                                <span class="text-muted">—</span>
+                            <span class="text-muted">—</span>
                             {% endif %}
                         </td>
                     </tr>
-                {% else %}
+                    {% else %}
                     <tr>
                         <td colspan="5" class="text-center text-muted py-4">Записи отсутствуют</td>
                     </tr>
-                {% endfor %}
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
