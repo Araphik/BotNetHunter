@@ -5,11 +5,10 @@
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">Пользователи</h1>
     <div class="btn-group">
-        <input type="text" class="form-control" id="userSearch" placeholder="Поиск по email">
+        <input type="text" class="form-control" id="userSearch" placeholder="Поиск по email" style="min-width: 250px;">
     </div>
 </div>
 
-<!-- Таблица -->
 <div class="card shadow-sm">
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -27,7 +26,7 @@
                 </thead>
                 <tbody id="usersTable">
                     {% for user in users %}
-                    <tr data-email="{{ user.email }}">
+                    <tr data-email="{{ user.email }}" data-status="{{ 'blocked' if not user.is_active else 'admin' if user.is_admin else 'active' }}">
                         <td>{{ user.id }}</td>
                         <td>
                             {{ user.email }}
@@ -58,7 +57,7 @@
                                 <form method="post" action="/admin/users/{{ user.id }}/block" class="d-inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <button type="submit" class="btn btn-outline-danger"
-                                            onclick="return confirm('Заблокировать пользователя {{ user.email }}?')">
+                                            onclick="return confirm('Заблокировать пользователя {{ user.email }}? Все активные сессии будут завершены.');">
                                         Заблокировать
                                     </button>
                                 </form>
@@ -78,7 +77,6 @@
                             </div>
                         </td>
                     </tr>
-                    <!-- Модальное окно лимита -->
                     <div class="modal fade" id="limitModal{{ user.id }}" tabindex="-1">
                         <div class="modal-dialog">
                             <div class="modal-content">
@@ -113,7 +111,6 @@
     </div>
 </div>
 
-<!-- Глобальный лимит -->
 <div class="card shadow-sm mt-4">
     <div class="card-header bg-white">
         <h5 class="mb-0">Глобальные настройки</h5>
@@ -135,21 +132,14 @@
     </div>
 </div>
 {% endblock %}
-
 {% block scripts %}
 <script>
-    function resetFilters() {
-        document.getElementById('userSearch').value = '';
-        document.querySelectorAll('#usersTable tr').forEach(row => {
-            row.style.display = '';
-        });
-    }
-    document.getElementById('userSearch').addEventListener('input', function(e) {
-        const query = e.target.value.toLowerCase();
-        document.querySelectorAll('#usersTable tr').forEach(row => {
-            const email = row.dataset.email || '';
-            row.style.display = email.toLowerCase().includes(query) ? '' : 'none';
-        });
+document.getElementById('userSearch').addEventListener('input', function(e) {
+    const query = e.target.value.toLowerCase();
+    document.querySelectorAll('#usersTable tr').forEach(row => {
+        const email = row.dataset.email || '';
+        row.style.display = email.toLowerCase().includes(query) ? '' : 'none';
     });
+});
 </script>
 {% endblock %}

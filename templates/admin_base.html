@@ -8,14 +8,15 @@
     <link rel="stylesheet" href="/static/css/style.css">
     <style>
         .admin-sidebar { min-height: 100vh; background: #212529; }
-        .admin-sidebar .nav-link { color: rgba(255,255,255,0.75); padding: 0.5rem 1rem; }
+        .admin-sidebar .nav-link { color: rgba(255,255,255,0.75); padding: 0.75rem 1rem; }
         .admin-sidebar .nav-link.active { color: #fff; background: rgba(255,255,255,0.1); }
         .admin-sidebar .nav-link:hover { color: #fff; }
         .admin-mobile-bar { background: #212529; }
         @media (max-width: 767.98px) {
             .admin-sidebar { min-height: auto; }
             .admin-sidebar .position-sticky { position: static !important; padding-bottom: 1rem; }
-            .admin-sidebar .nav-link { padding: 0.75rem 1rem; }
+            .admin-sidebar .nav-link { padding: 0.75rem 1rem; min-height: 44px; display: flex; align-items: center; }
+            .btn-sm, .btn-group-sm > .btn { min-height: 44px; padding: 0.5rem 1rem; }
         }
     </style>
 </head>

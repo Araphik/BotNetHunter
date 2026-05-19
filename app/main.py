@@ -13,11 +13,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, inspect, text
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
+import hashlib
 
 from app.database import get_db, engine, Base, SessionLocal
 from app.models import (
     User, AnalysisHistory, AdminSettings, ModuleParameter, VKToken,
-    AnalyzeRequest, AnalyzeResponse, HistoryItemResponse, HistoryListResponse, APIError
+    AnalyzeRequest, AnalyzeResponse, HistoryItemResponse, HistoryListResponse, APIError, Session
 )
 from app.auth import (
     get_password_hash, verify_password, create_access_token, decode_token, is_admin_login, generate_totp_secret,
@@ -343,6 +344,33 @@ async def rate_limit_middleware(request: Request, call_next):
         )
     return await call_next(request)
 
+@app.middleware("http")
+async def session_validation_middleware(request: Request, call_next):
+    """Проверяет валидность сессии при каждом запросе (для деактивации сессий)"""
+    if request.url.path.startswith("/static/") or request.url.path == "/health":
+        return await call_next(request)
+    
+    # Проверяем токен в cookie
+    token = request.cookies.get("token")
+    if token:
+        db = SessionLocal()
+        try:
+            # Проверяем, существует ли сессия в БД и активна ли она
+            token_hash = hashlib.sha256(token.encode()).hexdigest()
+            session = db.query(Session).filter(
+                Session.token == token_hash
+            ).first()
+            
+            # Если сессия найдена в БД и она НЕактивна - удаляем cookie
+            if session and not session.is_active:
+                response = await call_next(request)
+                response.delete_cookie("token")
+                return response
+            # Если сессии нет в БД - это старый токен или админ, разрешаем (JWT сам проверится)
+        finally:
+            db.close()
+    
+    return await call_next(request)
 
 @app.middleware("http")
 async def add_request_id_middleware(request: Request, call_next):
@@ -403,6 +431,56 @@ async def add_version_to_templates(request: Request, call_next):
     return response
 
 
+
+def create_session(db: Session, user_id: int, token: str, user_agent: str = None, ip_address: str = None):
+    """Создает новую сессию для пользователя"""
+    session = Session(
+        user_id=user_id,
+        token=hashlib.sha256(token.encode()).hexdigest(),  # Храним хеш токена
+        user_agent=user_agent,
+        ip_address=ip_address,
+        is_active=True
+    )
+    db.add(session)
+    db.commit()
+    return session
+
+def validate_session(db: Session, token: str) -> bool:
+    """Проверяет, активна ли сессия"""
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    session = db.query(Session).filter(
+        Session.token == token_hash,
+        Session.is_active == True
+    ).first()
+    return session is not None
+
+def deactivate_user_sessions(db: Session, user_id: int):
+    """Деактивирует все сессии пользователя"""
+    db.query(Session).filter(
+        Session.user_id == user_id,
+        Session.is_active == True
+    ).update({"is_active": False})
+    db.commit()
+
+def deactivate_session(db: Session, session_id: int, user_id: int):
+    """Деактивирует конкретную сессию"""
+    session = db.query(Session).filter(
+        Session.id == session_id,
+        Session.user_id == user_id
+    ).first()
+    if session:
+        session.is_active = False
+        db.commit()
+        return True
+    return False
+
+def get_user_sessions(db: Session, user_id: int):
+    """Получает все сессии пользователя"""
+    return db.query(Session).filter(
+        Session.user_id == user_id
+    ).order_by(Session.last_activity.desc()).all()
+
+
 # HTML-ИНТЕРФЕЙС 
 @app.get("/", response_class=HTMLResponse, tags=["Web UI"], include_in_schema=False)
 async def home(request: Request):
@@ -413,31 +491,35 @@ async def home(request: Request):
 async def login(request: Request, email: str = Form(...), password: str = Form(...), csrf_token: str = Form(...), db: Session = Depends(get_db)):
     if not validate_csrf_token(request, csrf_token):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
-        
+    
     if is_admin_login(email, password):
         response = RedirectResponse(url="/admin", status_code=303)
         response.set_cookie("admin_email", ADMIN_EMAIL, httponly=True, max_age=86400, secure=True, samesite="lax")
         response.set_cookie("admin_token", create_admin_token(), httponly=True, max_age=86400, secure=True, samesite="lax")
-        return response
         
+        return response
+    
     user = db.query(User).filter(User.email == email).first()
     if not user or not verify_password(password, user.hashed_password):
         return csrf_template_response(request, "login.html", {"error": "Неверный email или пароль"})
-        
+    
     if not user.is_active:
         return csrf_template_response(request, "login.html", {"error": "Аккаунт заблокирован"})
-        
+    
     if user.is_2fa_enabled and user.totp_secret:
         temp_token = create_temp_2fa_token({"sub": user.email})
         response = RedirectResponse(url="/login/2fa", status_code=303)
         response.set_cookie("temp_2fa", temp_token, httponly=True, max_age=300, secure=True, samesite="lax")
         return response
-        
-    # Стандартный вход без 2FA
+    
     token = create_access_token(data={"sub": user.email})
     response = RedirectResponse(url="/dashboard", status_code=303)
     response.set_cookie(key="token", value=token, httponly=True, max_age=86400, secure=True, samesite="lax")
+    create_session(db, user.id, token, request.headers.get("user-agent"), request.client.host if request.client else None)
     return response
+
+
+
 
 @app.get("/register", response_class=HTMLResponse, tags=["Web UI"], include_in_schema=False)
 async def register_page(request: Request):
@@ -1034,14 +1116,55 @@ async def admin_users(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request, "admin_users.html", {"request": request, "users": users, "global_limit": DEFAULT_REQUESTS_LIMIT})
 
 
+@app.get("/admin/sessions", response_class=HTMLResponse, tags=["Admin UI"], include_in_schema=False)
+async def admin_sessions(request: Request, db: Session = Depends(get_db)):
+    """Показывает все активные сессии"""
+    if not get_admin_from_cookie(request):
+        return RedirectResponse(url="/", status_code=303)
+    
+    sessions = db.query(Session).join(User).filter(
+        Session.is_active == True
+    ).order_by(Session.last_activity.desc()).all()
+    
+    return templates.TemplateResponse(request, "admin_sessions.html", {
+        "request": request,
+        "sessions": sessions
+    })
+
+@app.post("/admin/sessions/{session_id}/deactivate", tags=["Admin UI"], include_in_schema=False)
+async def admin_deactivate_session(request: Request, session_id: int, db: Session = Depends(get_db)):
+    """Деактивирует сессию"""
+    if not get_admin_from_cookie(request):
+        return RedirectResponse(url="/", status_code=303)
+    
+    session = db.query(Session).filter(Session.id == session_id).first()
+    if session:
+        session.is_active = False
+        db.commit()
+    
+    return RedirectResponse(url="/admin/sessions", status_code=303)
+
+@app.post("/admin/users/{user_id}/deactivate-sessions", tags=["Admin UI"], include_in_schema=False)
+async def admin_deactivate_user_sessions(request: Request, user_id: int, db: Session = Depends(get_db)):
+    """Деактивирует все сессии пользователя"""
+    if not get_admin_from_cookie(request):
+        return RedirectResponse(url="/", status_code=303)
+    
+    deactivate_user_sessions(db, user_id)
+    return RedirectResponse(url="/admin/users", status_code=303)
+
 @app.post("/admin/users/{user_id}/block", tags=["Admin UI"], include_in_schema=False)
 async def admin_user_block(request: Request, user_id: int, db: Session = Depends(get_db)):
     if not get_admin_from_cookie(request):
         return RedirectResponse(url="/", status_code=303)
+    
     user = db.query(User).filter(User.id == user_id).first()
     if user and not user.is_admin:
         user.is_active = False
+        # Деактивируем все сессии пользователя
+        deactivate_user_sessions(db, user_id)
         db.commit()
+    
     return RedirectResponse(url="/admin/users", status_code=303)
 
 
