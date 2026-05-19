@@ -1053,22 +1053,30 @@ DEFAULT_SETTINGS = {
 }
 
 def _get_admin_settings(db: Session):
-    """Получает текущие настройки из БД"""
+    """Получает текущие настройки из БД для отображения в админ-панели"""
     current = dict(DEFAULT_SETTINGS)
     try:
         db_settings = db.query(AdminSettings).filter(AdminSettings.key.like('setting_%')).all()
+        logger.debug(f"Найдено {len(db_settings)} записей настроек в БД")
         for s in db_settings:
             # Убираем префикс для маппинга на DEFAULT_SETTINGS
             key = s.key.replace('setting_', '')
             if key in current:
-                try: 
+                try:
                     val = float(s.value)
                     # Если это порог схожести, умножаем на 100 для UI
                     if key == 'similarity_threshold':
                         val = val * 100
                     current[key] = val
-                except: pass
-    except: pass
+                    logger.debug(f"Настройка {key} = {val} (из БД: '{s.value}')")
+                except ValueError as e:
+                    logger.warning(f"Не удалось преобразовать '{s.value}' для настройки {key}: {e}")
+                except Exception as e:
+                    logger.warning(f"Ошибка обработки настройки {key}: {e}")
+            else:
+                logger.debug(f"Настройка {key} не в DEFAULT_SETTINGS, пропущена")
+    except Exception as e:
+        logger.error(f"Ошибка получения настроек из БД: {e}")
     return current
 
 @app.get("/admin/settings", response_class=HTMLResponse, tags=["Admin UI"], include_in_schema=False)
@@ -1082,31 +1090,43 @@ async def admin_settings_page(request: Request, db: Session = Depends(get_db)):
 async def admin_settings_save(request: Request, db: Session = Depends(get_db)):
     if not get_admin_from_cookie(request):
         return RedirectResponse(url="/", status_code=303)
-    
     form_data = await request.form()
     csrf_token = form_data.get("csrf_token", "")
     if not validate_csrf_token(request, csrf_token):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
-
+    
+    saved_count = 0
     for key, default_val in DEFAULT_SETTINGS.items():
         val = form_data.get(key)
-        if val is not None:
+        # Проверяем, что значение не None и не пустая строка
+        if val is not None and val.strip() != "":
             try:
-                val_float = float(val)
+                val_float = float(val.strip())
                 # Если это порог схожести, делим на 100 для хранения (0.85)
                 if key == 'similarity_threshold':
                     val_float = val_float / 100.0
-                    
                 db_key = f"setting_{key}"
                 setting = db.query(AdminSettings).filter(AdminSettings.key == db_key).first()
                 if setting:
                     setting.value = str(val_float)
+                    logger.debug(f"Обновлена настройка {db_key} = {val_float}")
                 else:
                     db.add(AdminSettings(key=db_key, value=str(val_float)))
-            except ValueError:
-                pass
+                    logger.debug(f"Добавлена настройка {db_key} = {val_float}")
+                saved_count += 1
+            except ValueError as e:
+                logger.warning(f"Не удалось преобразовать значение для {key}: '{val}', ошибка: {e}")
+            except Exception as e:
+                logger.error(f"Ошибка сохранения настройки {key}: {e}")
     
-    db.commit()
+    try:
+        db.commit()
+        logger.info(f"Сохранено {saved_count} настроек в БД")
+    except Exception as e:
+        logger.error(f"Ошибка настроек: {e}")
+        db.rollback()
+        return RedirectResponse(url="/admin/settings?error=1", status_code=303)
+    
     return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
 
 

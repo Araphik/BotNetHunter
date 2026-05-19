@@ -32,15 +32,19 @@ def _get_settings(key, default):
             if isinstance(val, str):
                 val = val.strip()
                 if not val:
+                    logger.debug(f"Настройка {db_key} имеет пустое значение, используется дефолт: {default}")
                     return default
             # Если уже число — возвращаем как есть
             if isinstance(val, (int, float)):
                 return val
             # Пытаемся преобразовать строку в число
-            return float(val)
+            try:
+                return float(val)
+            except ValueError:
+                logger.warning(f"Не удалось преобразовать '{val}' для настройки {db_key}, используется дефолт: {default}")
+                return default
         else:
-            # Настройка не найдена — логируем для отладки
-            logger.debug(f"Настройка {db_key} не найдена в БД, используется значение по умолчанию: {default}")
+            logger.debug(f"Настройка {db_key} не найдена в БД, используется дефолт: {default}")
     except Exception as e:
         from utils.logger import logger
         logger.warning(f"Ошибка получения настройки {key}: {e}")
@@ -214,6 +218,7 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
             total_weighted_penalty += user_penalty * profile_score
             
     # Расчет новой оценки активности (нормализация и применение коэффициента)
+    # подразумевается что risk_coefficient от 1 до 10 ставится
     if total_comments > 0:
         new_activity_score = (total_weighted_penalty / total_comments) * risk_coefficient
     else:

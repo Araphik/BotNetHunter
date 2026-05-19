@@ -24,6 +24,7 @@
                 <div class="col-md-6">
                     <label class="form-label fw-medium">Коэффициент оценки</label>
                     <input type="number" step="1" min="1" max="50" name="risk_coefficient" value="{{ settings.risk_coefficient }}" class="form-control" required>
+                    <small class="text-muted">Линейно влияет на строгость анализа (оптимально 1-10)</small>
                 </div>
             </div>
         </div>
@@ -37,7 +38,7 @@
         <div class="card-body">
             <div class="row g-4">
                 <div class="col-md-4">
-                    <label class="form-label fw-medium">Порог схожести комментариев (%)</label>
+                    <label class="form-label fw-medium">Порог схожести комментариев</label>
                     <input type="number" step="1" min="0" max="100" name="similarity_threshold" value="{{ settings.similarity_threshold }}" class="form-control" required>
                 </div>
                 <div class="col-md-4">
