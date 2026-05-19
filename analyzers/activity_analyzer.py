@@ -50,44 +50,41 @@ class ActivityAnalyzer(BaseAnalyzer):
 
     def analyze(self, posts_with_engagement: list, owner_id: str = None):
         if not posts_with_engagement: return 0, [], []
-
         total_penalty = 0
         reasons = []
         findings = []
         total_comments, bot_pattern_count, user_data, user_ids = self._collect_activity(posts_with_engagement)
-
         user_names = self._fetch_user_names(list(user_ids))
         total_posts_count = len(posts_with_engagement)
         penalty, reason = self._get_global_generic_comment_penalty(total_comments, bot_pattern_count)
-
         if reason:
             total_penalty += penalty
             reasons.append(reason)
-
         for uid, data in user_data.items():
             user_penalty, user_reasons, user_findings = self._analyze_user_activity(uid, data, total_posts_count, owner_id)
             total_penalty += user_penalty
             reasons.extend(user_reasons)
-
             if user_findings:
                 user_name = user_names.get(uid, f"id{uid}")
-                findings.append({'user_id': uid, 'user_name': user_name, 'patterns': user_findings})
-
+                # Добавляем user_penalty в findings для новой формулы расчета
+                findings.append({
+                    'user_id': uid, 
+                    'user_name': user_name, 
+                    'patterns': user_findings,
+                    'user_penalty': user_penalty
+                })
         network_findings = self._detect_coordinated_comments(user_data, owner_id)
         if network_findings:
             penalty = int(_get_settings('penalty_coordination', 15))
             total_penalty += penalty
-            
             reasons.append(f"Обнаружено {len(network_findings)} групп скоординированных комментариев")
             findings.append({'type': 'network_coordination', 'groups': network_findings})
-
         risk_coefficient = int(_get_settings('risk_coefficient', 5))
         if total_comments > 0:
             calculated_score = (total_penalty * risk_coefficient) / total_comments * 1000
         else:
             calculated_score = 0
         final_score = min(calculated_score, 100)
-        
         return final_score, reasons, findings
 
     def _collect_activity(self, posts_with_engagement):

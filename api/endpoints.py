@@ -20,16 +20,30 @@ def _get_settings(key, default):
     try:
         from app.database import SessionLocal
         from app.models import AdminSettings
+        
         db = SessionLocal()
-        setting = db.query(AdminSettings).filter(AdminSettings.key == f"setting_{key}").first()
+        db_key = f"setting_{key}"
+        setting = db.query(AdminSettings).filter(AdminSettings.key == db_key).first()
         db.close()
-        if setting:
+        
+        if setting and setting.value is not None:
             val = setting.value
+            # Обрабатываем строковые значения — убираем пробелы
+            if isinstance(val, str):
+                val = val.strip()
+                if not val:
+                    return default
+            # Если уже число — возвращаем как есть
             if isinstance(val, (int, float)):
                 return val
+            # Пытаемся преобразовать строку в число
             return float(val)
-    except Exception:
-        pass
+        else:
+            # Настройка не найдена — логируем для отладки
+            logger.debug(f"Настройка {db_key} не найдена в БД, используется значение по умолчанию: {default}")
+    except Exception as e:
+        from utils.logger import logger
+        logger.warning(f"Ошибка получения настройки {key}: {e}")
     return default
 
 def _normalize_target(target: str) -> str:
@@ -109,19 +123,23 @@ def analyze_user(user_input: str, token_manager, fast_mode: bool = True) -> dict
         'reasons': all_reasons
     }
 
+
 def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict | None:
     vk = VKClient(token_manager)
     normalized_id = _normalize_group_id(group_id)
     logger.info(f"Начало анализа группы {group_id} (нормализовано: {normalized_id})")
     posts_limit = _get_param_value("group_post_analyzer", "posts_limit", 100)
     comments_limit = _get_param_value("group_post_analyzer", "comments_limit", 100000)
+    
     group_data, status = vk.request('groups.getById', {'group_id': normalized_id})
     if status != 'ok' or not group_data or 'response' not in group_data:
         logger.error(f"Не удалось получить данные группы {normalized_id}")
         return None
+        
     group_info = group_data['response'][0] if isinstance(group_data['response'], list) else group_data['response']
     group_id_numeric = group_info.get('id')
     owner_id = f"-{group_id_numeric}"
+    
     posts_data, posts_status = vk.request('wall.get', {
         'owner_id': owner_id, 'count': posts_limit, 'filter': 'owner'
     })
@@ -129,7 +147,9 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
     if posts_status == 'ok' and posts_data and 'response' in posts_data:
         posts = posts_data['response'].get('items', [])
         logger.info(f"Загружено постов: {len(posts)}")
+        
     post_score, post_reasons = GroupPostAnalyzer(vk).analyze(posts, group_info)
+    
     posts_with_engagement = []
     for i, post in enumerate(posts):
         post_id = post.get('id')
@@ -146,27 +166,68 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
             'comments': comments
         })
         time.sleep(REQUEST_DELAY)
+        
     logger.info(f"Постов с активностью: {len(posts_with_engagement)}")
-    activity_score, activity_reasons, activity_findings = ActivityAnalyzer(vk).analyze(
+    
+    # Считаем общее количество комментариев заранее для формулы
+    total_comments = sum(len(p.get('comments', [])) for p in posts_with_engagement)
+    
+    # Получаем сырые нарушения активности
+    activity_score_old, activity_reasons, activity_findings = ActivityAnalyzer(vk).analyze(
         posts_with_engagement, owner_id=owner_id
     )
-
     logger.info(f"Найдено {len(activity_findings)} нарушений. Запуск анализа профилей...")
+    
+    risk_coefficient = _get_settings('risk_coefficient', 5)
+    total_weighted_penalty = 0
+    
     for finding in activity_findings:
         if isinstance(finding, dict) and 'user_id' in finding:
             uid = finding['user_id']
             try:
-                # Вызываем функцию analyze_user для каждого нарушителя
                 profile_result = analyze_user(str(uid), token_manager, fast_mode=True)
                 if profile_result:
                     finding['profile_analysis'] = profile_result
                     logger.info(f"Профиль id{uid} проанализирован: {profile_result.get('score')}/100 ({profile_result.get('risk_level')})")
+                else:
+                    # VK API вернул ошибку или пустой ответ (закрыт/удален)
+                    finding['profile_analysis'] = {
+                        'score': 100,
+                        'risk_level': 'HIGH',
+                        'reasons': [{'reason': 'Закрытый или удаленный аккаунт', 'points': 100}],
+                        'user_id': uid
+                    }
+                    logger.warning(f"Профиль id{uid} недоступен, присвоена оценка 100/100")
             except Exception as e:
-                logger.warning(f"Ошибка анализа профиля id{uid}: {e}")
-    
+                logger.warning(f"Критическая ошибка анализа профиля id{uid}: {e}")
+                finding['profile_analysis'] = {
+                    'score': 100,
+                    'risk_level': 'HIGH',
+                    'reasons': [{'reason': 'Закрытый или удаленный аккаунт', 'points': 100}],
+                    'user_id': uid
+                }
+                
+            # Новая формула активности: сумма штрафов * (оценка профиля + 100)
+            user_penalty = finding.get('user_penalty', 0)
+            profile_score = finding.get('profile_analysis', {}).get('score', 50)
+            profile_score += 100
+            total_weighted_penalty += user_penalty * profile_score
+            
+    # Расчет новой оценки активности (нормализация и применение коэффициента)
+    if total_comments > 0:
+        new_activity_score = (total_weighted_penalty / total_comments) * risk_coefficient
+    else:
+        new_activity_score = 0
+
+    logger.info(f"Коэффициент риска {risk_coefficient}, new_activity_score сырое = {new_activity_score}")
+
+    new_activity_score = min(new_activity_score, 100)
+
 
     
-    total_score = round(post_score * 0.5 + activity_score * 0.5)
+    # Итоговая формула: 75% активность + 25% посты группы
+    total_score = round(new_activity_score * 0.75 + post_score * 0.25)
+    
     all_reasons = post_reasons + activity_reasons
     reason_counts = defaultdict(int)
     for r in all_reasons:
@@ -189,12 +250,14 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
             reason_counts["Скоординированные действия"] += 1
         elif "аномально много" in r_lower or "повышенное количество" in r_lower:
             reason_counts["Общий спам в группе"] += 1
+            
     summary = [{"label": k, "count": v} for k, v in sorted(reason_counts.items(), key=lambda x: x[1], reverse=True)]
-    total_comments = sum(len(p.get('comments', [])) for p in posts_with_engagement)
+    
     unique_commenters = len(set(
         c.get('from_id') for p in posts_with_engagement
         for c in p.get('comments', []) if c.get('from_id') and c.get('from_id') > 0
     ))
+    
     details = {
         "reasons": all_reasons,
         "summary": summary,
