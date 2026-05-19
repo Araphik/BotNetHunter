@@ -350,7 +350,6 @@ async def session_validation_middleware(request: Request, call_next):
     if request.url.path.startswith("/static/") or request.url.path == "/health":
         return await call_next(request)
     
-    # Проверяем токен в cookie
     token = request.cookies.get("token")
     if token:
         db = SessionLocal()
@@ -366,11 +365,12 @@ async def session_validation_middleware(request: Request, call_next):
                 response = await call_next(request)
                 response.delete_cookie("token")
                 return response
-            # Если сессии нет в БД - это старый токен или админ, разрешаем (JWT сам проверится)
+            
         finally:
             db.close()
     
     return await call_next(request)
+
 
 @app.middleware("http")
 async def add_request_id_middleware(request: Request, call_next):
