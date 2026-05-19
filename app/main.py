@@ -532,12 +532,16 @@ async def register(request: Request, email: str = Form(...), password: str = For
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
     if db.query(User).filter(User.email == email).first():
         return csrf_template_response(request, "register.html", {"error": "Email уже зарегистрирован"})
+    
     new_user = User(email=email, hashed_password=get_password_hash(password), requests_limit=DEFAULT_REQUESTS_LIMIT)
     db.add(new_user)
     db.commit()
+    
     token = create_access_token(data={"sub": new_user.email})
     response = RedirectResponse(url="/dashboard", status_code=303)
     response.set_cookie(key="token", value=token, httponly=True, max_age=86400, secure=True, samesite="lax")
+    create_session(db, new_user.id, token, request.headers.get("user-agent"), request.client.host if request.client else None)
+    
     return response
 
 
@@ -1364,21 +1368,21 @@ async def login_2fa_page(request: Request):
 async def login_2fa_verify(request: Request, otp_code: str = Form(...), csrf_token: str = Form(...), db: Session = Depends(get_db)):
     if not validate_csrf_token(request, csrf_token):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
-        
     temp = request.cookies.get("temp_2fa")
     payload = decode_temp_2fa_token(temp) if temp else None
     if not payload:
         return RedirectResponse(url="/", status_code=303)
-        
     user = db.query(User).filter(User.email == payload["sub"]).first()
     if not user or not verify_totp(user.totp_secret, otp_code):
         return csrf_template_response(request, "login_2fa.html", {"error": "Неверный код подтверждения"})
-        
-
+    
     token = create_access_token(data={"sub": user.email})
     response = RedirectResponse(url="/dashboard", status_code=303)
     response.set_cookie(key="token", value=token, httponly=True, max_age=86400, secure=True, samesite="lax")
     response.delete_cookie("temp_2fa")
+    
+    create_session(db, user.id, token, request.headers.get("user-agent"), request.client.host if request.client else None)
+    
     return response
 
 @app.get("/account/2fa/setup", response_class=HTMLResponse, tags=["Web UI"], include_in_schema=False)
