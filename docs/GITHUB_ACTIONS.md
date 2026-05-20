@@ -37,7 +37,7 @@ Read and write permissions
 
 Workflow дополнительно задает permissions:
 
-- `contents: write` - создание Releases и публикация HTML-отчета Trivy в ветку `gh-pages`;
+- `contents: write` - создание Releases и публикация отчета Trivy в ветку `trivy-reports`;
 - `packages: write` - публикация Docker-образа в `ghcr.io`;
 
 ### SonarQube
@@ -90,25 +90,19 @@ ghcr.io/<owner>/<repo>:sha-<short-sha>
 - `botnethunter-<version>-docker-image.tar.gz`;
 - `SHA256SUMS`.
 
-Trivy в GitHub Actions не загружает JSON/SARIF как workflow artifact, потому что GitHub artifact storage может закончиться и заблокировать upload. Code scanning alerts тоже не используются: в личном репозитории GitHub может держать эту функцию выключенной без GitHub Advanced Security. Вместо этого отчеты можно смотреть без artifact storage и без Code Scanning:
+Trivy в GitHub Actions не загружает JSON/SARIF как workflow artifact, потому что GitHub artifact storage может закончиться и заблокировать upload. Code scanning alerts тоже не используются: в личном репозитории GitHub может держать эту функцию выключенной без GitHub Advanced Security. GitHub Pages для приватного репозитория также может быть недоступен на бесплатном плане. Вместо этого отчеты можно смотреть без artifact storage, Code Scanning и Pages:
 
 - в `Actions -> CI -> container-scan-trivy-job -> Summary` - краткая Markdown-сводка с количеством уязвимостей и top findings;
-- на GitHub Pages из ветки `gh-pages`: `https://<owner>.github.io/<repo>/trivy/` - HTML-отчет с поиском, фильтрацией по severity и ссылками на CVE.
+- в ветке `trivy-reports` - GitHub отрисовывает `README.md` и `trivy-image-report.md` прямо в браузере;
+- в этой же ветке хранится `trivy-image-report.html` - интерактивный HTML-отчет с поиском, фильтрацией по severity и ссылками на CVE. Его можно скачать из GitHub и открыть локально в браузере.
 
 Внутри job все еще создаются файлы:
 
 - `trivy-image-report.json`;
+- `trivy-image-report.md`;
 - `trivy-image-report.html`;
 
-но они используются только для summary и публикации HTML-страницы в `gh-pages`.
-
-Чтобы HTML-отчет открылся как сайт, в настройках репозитория включите:
-
-```text
-Settings -> Pages -> Build and deployment -> Deploy from a branch
-Branch: gh-pages
-Folder: / (root)
-```
+но они используются только для summary и публикации в ветку `trivy-reports`.
 
 SonarQube сохраняет:
 

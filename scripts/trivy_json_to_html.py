@@ -250,11 +250,87 @@ severity.addEventListener("change", applyFilters);
 """
 
 
+def markdown_cell(value: object, fallback: str = "n/a") -> str:
+    return (
+        text(value, fallback)
+        .replace("|", "\\|")
+        .replace("\r", " ")
+        .replace("\n", " ")
+    )
+
+
+def render_markdown(report: dict, findings: list[dict[str, str]], image_ref: str) -> str:
+    counts = Counter(item["severity"] for item in findings)
+    created_at = text(report.get("CreatedAt"))
+    artifact_name = text(report.get("ArtifactName"), image_ref)
+    os_name = text((report.get("Metadata") or {}).get("OS"), "n/a")
+
+    lines = [
+        "# Trivy Image Report",
+        "",
+        f"- Image: `{image_ref}`",
+        f"- Artifact: `{artifact_name}`",
+        f"- OS: `{os_name}`",
+        f"- Created: `{created_at}`",
+        f"- Total vulnerabilities: **{len(findings)}**",
+        "",
+        "## Summary",
+        "",
+        "| Severity | Count |",
+        "| --- | ---: |",
+    ]
+    for severity in SEVERITIES:
+        lines.append(f"| {severity} | {counts[severity]} |")
+    lines.extend(
+        [
+            f"| **TOTAL** | **{len(findings)}** |",
+            "",
+            "## Findings",
+            "",
+        ]
+    )
+
+    if not findings:
+        lines.append("No vulnerabilities found.")
+        lines.append("")
+        return "\n".join(lines)
+
+    lines.extend(
+        [
+            "| Severity | ID | Package | Installed | Fixed | Type | Target | Title |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for finding in findings:
+        vuln_id = markdown_cell(finding["id"])
+        if finding["url"]:
+            vuln_id = f"[{vuln_id}]({finding['url']})"
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    markdown_cell(finding["severity"]),
+                    vuln_id,
+                    markdown_cell(finding["package"]),
+                    markdown_cell(finding["installed"]),
+                    markdown_cell(finding["fixed"]),
+                    markdown_cell(finding["type"]),
+                    markdown_cell(finding["target"]),
+                    markdown_cell(finding["title"]),
+                ]
+            )
+            + " |"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("input", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--image-ref", default="unknown")
+    parser.add_argument("--markdown-output", type=Path)
     args = parser.parse_args()
 
     with args.input.open(encoding="utf-8") as file:
@@ -265,6 +341,11 @@ def main() -> None:
         render_report(report, findings, args.image_ref),
         encoding="utf-8",
     )
+    if args.markdown_output:
+        args.markdown_output.write_text(
+            render_markdown(report, findings, args.image_ref),
+            encoding="utf-8",
+        )
 
 
 if __name__ == "__main__":
