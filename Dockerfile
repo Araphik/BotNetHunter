@@ -12,7 +12,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir --upgrade pip \
+
+# Сначала явно апгрейдим pip и setuptools>=82.0.0,
+# чтобы вендорные копии wheel и jaraco.context внутри setuptools
+# были обновлены до установки остальных зависимостей (CVE-2026-24049, CVE-2026-23949)
+RUN pip install --no-cache-dir --upgrade pip "setuptools>=82.0.0" \
     && pip install --no-cache-dir -r requirements.txt
 
 COPY . .

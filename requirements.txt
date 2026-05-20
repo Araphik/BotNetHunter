@@ -16,8 +16,7 @@ uuid7>=0.1.0
 prometheus-fastapi-instrumentator==7.0.0
 pyotp>=2.9.0
 
-# CVE-2026-24049: wheel < 0.46.2 — Privilege Escalation / Arbitrary Code Execution
-wheel>=0.46.2
-
-# CVE-2026-23949: jaraco.context < 6.1.0 — Path traversal via malicious tar archives
-jaraco.context>=6.1.0
+# CVE-2026-24049 + CVE-2026-23949: уязвимые версии wheel и jaraco.context
+# находятся внутри setuptools/_vendor/, поэтому фиксируются обновлением setuptools.
+# setuptools>=82.0.0 бандлит wheel-0.46.3 и jaraco.context-6.1.0 (оба закрывают CVE).
+setuptools>=82.0.0
