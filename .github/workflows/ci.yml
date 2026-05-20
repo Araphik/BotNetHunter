@@ -302,17 +302,97 @@ jobs:
         with:
           sarif_file: trivy-image-report.sarif
 
-      - name: Upload Trivy container scanning reports
+      - name: Publish Trivy report summary
         if: always()
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-container-scanning-report
-          path: |
-            trivy-image-report.json
-            trivy-image-report.sarif
-          if-no-files-found: ignore
-          retention-days: 1
+        shell: bash
+        run: |
+          {
+            echo "## Trivy container scan"
+            echo
+            echo "- Image: \`${{ needs.package-job.outputs.image-ref }}\`"
+            echo "- Full GUI report: [$GITHUB_REPOSITORY Code Scanning]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/security/code-scanning?query=tool%3ATrivy)"
+            echo "- Raw \`trivy-image-report.json\` and \`trivy-image-report.sarif\` are generated inside this job, but are not uploaded as artifacts to avoid GitHub artifact quota failures."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ ! -s trivy-image-report.json ]; then
+            {
+              echo
+              echo "_Trivy JSON report was not generated._"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          total="$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-image-report.json)"
+          critical="$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-image-report.json)"
+          high="$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-image-report.json)"
+          medium="$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' trivy-image-report.json)"
+          low="$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "LOW")] | length' trivy-image-report.json)"
+          unknown="$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "UNKNOWN")] | length' trivy-image-report.json)"
+
+          {
+            echo
+            echo "### Summary"
+            echo
+            echo "| Severity | Count |"
+            echo "| --- | ---: |"
+            echo "| CRITICAL | $critical |"
+            echo "| HIGH | $high |"
+            echo "| MEDIUM | $medium |"
+            echo "| LOW | $low |"
+            echo "| UNKNOWN | $unknown |"
+            echo "| **TOTAL** | **$total** |"
+            echo
+            echo "### Top findings"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$total" -eq 0 ]; then
+            echo "_No vulnerabilities found._" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "| Severity | ID | Package | Installed | Fixed | Target | Title |"
+            echo "| --- | --- | --- | --- | --- | --- | --- |"
+            jq -r '
+              def cell:
+                (. // "n/a")
+                | tostring
+                | gsub("\\|"; "\\|")
+                | gsub("\r|\n"; " ")
+                | if length > 140 then .[0:137] + "..." else . end;
+              def rank:
+                if . == "CRITICAL" then 0
+                elif . == "HIGH" then 1
+                elif . == "MEDIUM" then 2
+                elif . == "LOW" then 3
+                else 4 end;
+              [
+                .Results[]? as $result
+                | ($result.Vulnerabilities // [])[]
+                | {
+                    severity: .Severity,
+                    id: .VulnerabilityID,
+                    url: (.PrimaryURL // ""),
+                    pkg: .PkgName,
+                    installed: .InstalledVersion,
+                    fixed: (.FixedVersion // "no fix"),
+                    target: $result.Target,
+                    title: (.Title // .Description // "n/a")
+                  }
+              ]
+              | sort_by(.severity | rank)
+              | .[:20][]
+              | "| " + (.severity | cell)
+                + " | " + (if .url == "" then (.id | cell) else "[" + (.id | cell) + "](" + .url + ")" end)
+                + " | " + (.pkg | cell)
+                + " | " + (.installed | cell)
+                + " | " + (.fixed | cell)
+                + " | " + (.target | cell)
+                + " | " + (.title | cell)
+                + " |"
+            ' trivy-image-report.json
+          } >> "$GITHUB_STEP_SUMMARY"
 
   release-job:
     runs-on: ubuntu-latest

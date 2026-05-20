@@ -91,10 +91,17 @@ ghcr.io/<owner>/<repo>:sha-<short-sha>
 - `botnethunter-<version>-docker-image.tar.gz`;
 - `SHA256SUMS`.
 
-Trivy сохраняет:
+Trivy в GitHub Actions не загружает JSON/SARIF как workflow artifact, потому что GitHub artifact storage может закончиться и заблокировать upload. Вместо этого отчеты можно смотреть без artifact storage:
+
+- в `Actions -> CI -> container-scan-trivy-job -> Summary` - краткая Markdown-сводка с количеством уязвимостей и top findings;
+- в `Security -> Code scanning` - GUI GitHub для SARIF-отчета Trivy с фильтрами, поиском по CVE и переходами по найденным alerts.
+
+Внутри job все еще создаются файлы:
 
 - `trivy-image-report.json`;
-- `trivy-image-report.sarif`.
+- `trivy-image-report.sarif`;
+
+но они используются только для summary и загрузки в Code Scanning.
 
 SonarQube сохраняет:
 
