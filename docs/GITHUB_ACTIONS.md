@@ -37,9 +37,8 @@ Read and write permissions
 
 Workflow дополнительно задает permissions:
 
-- `contents: write` - создание Releases;
+- `contents: write` - создание Releases и публикация HTML-отчета Trivy в ветку `gh-pages`;
 - `packages: write` - публикация Docker-образа в `ghcr.io`;
-- `security-events: write` - загрузка SARIF-отчета Trivy в Code Scanning.
 
 ### SonarQube
 
@@ -91,17 +90,25 @@ ghcr.io/<owner>/<repo>:sha-<short-sha>
 - `botnethunter-<version>-docker-image.tar.gz`;
 - `SHA256SUMS`.
 
-Trivy в GitHub Actions не загружает JSON/SARIF как workflow artifact, потому что GitHub artifact storage может закончиться и заблокировать upload. Вместо этого отчеты можно смотреть без artifact storage:
+Trivy в GitHub Actions не загружает JSON/SARIF как workflow artifact, потому что GitHub artifact storage может закончиться и заблокировать upload. Code scanning alerts тоже не используются: в личном репозитории GitHub может держать эту функцию выключенной без GitHub Advanced Security. Вместо этого отчеты можно смотреть без artifact storage и без Code Scanning:
 
 - в `Actions -> CI -> container-scan-trivy-job -> Summary` - краткая Markdown-сводка с количеством уязвимостей и top findings;
-- в `Security -> Code scanning` - GUI GitHub для SARIF-отчета Trivy с фильтрами, поиском по CVE и переходами по найденным alerts.
+- на GitHub Pages из ветки `gh-pages`: `https://<owner>.github.io/<repo>/trivy/` - HTML-отчет с поиском, фильтрацией по severity и ссылками на CVE.
 
 Внутри job все еще создаются файлы:
 
 - `trivy-image-report.json`;
-- `trivy-image-report.sarif`;
+- `trivy-image-report.html`;
 
-но они используются только для summary и загрузки в Code Scanning.
+но они используются только для summary и публикации HTML-страницы в `gh-pages`.
+
+Чтобы HTML-отчет открылся как сайт, в настройках репозитория включите:
+
+```text
+Settings -> Pages -> Build and deployment -> Deploy from a branch
+Branch: gh-pages
+Folder: / (root)
+```
 
 SonarQube сохраняет:
 

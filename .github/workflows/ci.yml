@@ -10,7 +10,6 @@ on:
 permissions:
   contents: write
   packages: write
-  security-events: write
   actions: read
 
 jobs:
@@ -260,6 +259,9 @@ jobs:
     needs: [ package-job ]
     if: github.event_name == 'push'
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -286,21 +288,16 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
 
-      - name: Run Aqua Trivy SARIF scan
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ needs.package-job.outputs.image-ref }}
-          format: sarif
-          output: trivy-image-report.sarif
-          exit-code: '0'
-          ignore-unfixed: true
-          vuln-type: os,library
-
-      - name: Upload Trivy report to GitHub Code Scanning
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: trivy-image-report.sarif
+      - name: Build Trivy HTML report
+        if: always()
+        shell: bash
+        run: |
+          if [ -s trivy-image-report.json ]; then
+            python3 scripts/trivy_json_to_html.py \
+              trivy-image-report.json \
+              trivy-image-report.html \
+              --image-ref "${{ needs.package-job.outputs.image-ref }}"
+          fi
 
       - name: Publish Trivy report summary
         if: always()
@@ -310,8 +307,8 @@ jobs:
             echo "## Trivy container scan"
             echo
             echo "- Image: \`${{ needs.package-job.outputs.image-ref }}\`"
-            echo "- Full GUI report: [$GITHUB_REPOSITORY Code Scanning]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/security/code-scanning?query=tool%3ATrivy)"
-            echo "- Raw \`trivy-image-report.json\` and \`trivy-image-report.sarif\` are generated inside this job, but are not uploaded as artifacts to avoid GitHub artifact quota failures."
+            echo "- HTML GUI report: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/trivy/"
+            echo "- Raw \`trivy-image-report.json\` is generated inside this job, but is not uploaded as an artifact to avoid GitHub artifact quota failures."
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ ! -s trivy-image-report.json ]; then
@@ -393,6 +390,36 @@ jobs:
                 + " |"
             ' trivy-image-report.json
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish Trivy HTML report to GitHub Pages branch
+        if: always() && github.ref_type == 'branch' && (github.ref_name == 'main' || github.ref_name == 'master') && hashFiles('trivy-image-report.html') != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          publish_dir="$(mktemp -d)"
+          git init "$publish_dir"
+          git -C "$publish_dir" config user.name "github-actions[bot]"
+          git -C "$publish_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$publish_dir" remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          if git -C "$publish_dir" fetch origin gh-pages --depth=1; then
+            git -C "$publish_dir" checkout -B gh-pages FETCH_HEAD
+          else
+            git -C "$publish_dir" checkout --orphan gh-pages
+          fi
+
+          mkdir -p "$publish_dir/trivy"
+          cp trivy-image-report.html "$publish_dir/trivy/index.html"
+          cp trivy-image-report.json "$publish_dir/trivy/trivy-image-report.json"
+          touch "$publish_dir/.nojekyll"
+
+          git -C "$publish_dir" add .nojekyll trivy/index.html trivy/trivy-image-report.json
+          git -C "$publish_dir" commit -m "Publish Trivy report for ${GITHUB_SHA::7}" || exit 0
+          git -C "$publish_dir" push origin gh-pages
 
   release-job:
     runs-on: ubuntu-latest
