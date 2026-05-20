@@ -118,6 +118,89 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    const avatarForm = document.getElementById('avatarUploadForm');
+    const avatarUploadId = document.getElementById('avatarUploadId');
+    const avatarProgress = document.getElementById('avatarUploadProgress');
+    const avatarProgressBar = document.getElementById('avatarUploadProgressBar');
+
+    function setAvatarProgress(percent) {
+        if (!avatarProgress || !avatarProgressBar) {
+            return;
+        }
+        const value = Math.max(0, Math.min(100, Math.round(percent)));
+        avatarProgress.classList.remove('d-none');
+        avatarProgressBar.style.width = `${value}%`;
+        avatarProgressBar.setAttribute('aria-valuenow', String(value));
+    }
+
+    if (avatarForm && avatarUploadId) {
+        avatarForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const uploadId = (window.crypto && crypto.randomUUID)
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            avatarUploadId.value = uploadId;
+            setAvatarProgress(0);
+
+            let socket = null;
+            const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            try {
+                socket = new WebSocket(`${protocol}://${window.location.host}/ws/uploads/${uploadId}`);
+                socket.addEventListener('open', function() {
+                    socket.send('start');
+                });
+                socket.addEventListener('message', function(event) {
+                    const data = JSON.parse(event.data);
+                    if (typeof data.percent === 'number') {
+                        setAvatarProgress(data.percent);
+                    }
+                });
+            } catch (error) {
+                socket = null;
+            }
+
+            const request = new XMLHttpRequest();
+            request.open('POST', avatarForm.action);
+            request.responseType = 'json';
+            request.setRequestHeader('Accept', 'application/json');
+            request.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+
+            request.upload.addEventListener('progress', function(event) {
+                if (event.lengthComputable) {
+                    setAvatarProgress(Math.min(85, (event.loaded / event.total) * 85));
+                }
+            });
+
+            request.addEventListener('load', function() {
+                if (socket) {
+                    socket.close();
+                }
+                if (request.status >= 200 && request.status < 300) {
+                    setAvatarProgress(100);
+                    window.location.assign('/dashboard?avatar_updated=1');
+                    return;
+                }
+                const detail = request.response && request.response.detail
+                    ? request.response.detail
+                    : 'Ошибка загрузки файла.';
+                alert(detail);
+                avatarProgress.classList.add('d-none');
+                avatarProgressBar.style.width = '0%';
+            });
+
+            request.addEventListener('error', function() {
+                if (socket) {
+                    socket.close();
+                }
+                alert('Ошибка загрузки файла.');
+                avatarProgress.classList.add('d-none');
+                avatarProgressBar.style.width = '0%';
+            });
+
+            request.send(new FormData(avatarForm));
+        });
+    }
+
     document.querySelectorAll('.bg-orange').forEach(el => {
         el.style.backgroundColor = '#fd7e14';
     });

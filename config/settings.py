@@ -29,6 +29,7 @@ if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY не задан в .env!")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").strip().lower() in {"1", "true", "yes", "on"}
 DATABASE_URL = os.getenv('DATABASE_URL')
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL не задан в .env!")

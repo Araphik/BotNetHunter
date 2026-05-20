@@ -33,13 +33,21 @@ services:
     environment:
       APP_VERSION: ${APP_VERSION:-1.0.0}
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-botnethunter}:${POSTGRES_PASSWORD:-botnethunter}@postgres:5432/${POSTGRES_DB:-botnethunter}
-      AVATAR_STORAGE_DIR: /app/static/avatars
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES:-1073741824}
+      AVATAR_STORAGE_DIR: /app/data/avatars
+      FILE_STORAGE_BACKEND: ${FILE_STORAGE_BACKEND:-filesystem}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_PREFIX: ${S3_PREFIX:-avatars}
     ports:
       - "127.0.0.1:${APP_PORT:-8000}:8000"
     volumes:
       - ./data:/app/data
       - ./VERSION:/app/VERSION:ro
-      - ./static/avatars:/app/static/avatars
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,6 +57,22 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  minio:
+    image: minio/minio:latest
+    container_name: botnethunter_minio
+    restart: unless-stopped
+    profiles:
+      - s3
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio_data:/data
 
   sonar_db:
     image: postgres:15-alpine
@@ -124,3 +148,4 @@ volumes:
   sonarqube_data:
   sonarqube_extensions:
   sonarqube_logs:
+  minio_data:

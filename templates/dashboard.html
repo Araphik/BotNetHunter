@@ -176,19 +176,37 @@
                     {% endif %}
                     <div class="flex-grow-1">
                         <h6 class="mb-1">Управление аватаром</h6>
-                        <form method="post" action="/account/avatar/upload" enctype="multipart/form-data">
+                        <form method="post" action="/account/avatar/upload" enctype="multipart/form-data" id="avatarUploadForm">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="upload_id" id="avatarUploadId" value="">
                             <div class="input-group input-group-sm">
                                 <input type="file" name="file" class="form-control form-control-sm" accept="image/*" required>
                                 <button type="submit" class="btn btn-outline-primary btn-sm">Загрузить</button>
                             </div>
                         </form>
+                        <div class="progress mt-2 d-none" id="avatarUploadProgress" style="height: 8px;">
+                            <div class="progress-bar" id="avatarUploadProgressBar" role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                        <small class="text-muted mt-1 d-block">JPG, PNG, GIF, WebP до {{ max_upload_size_mb|default(1024) }}MB</small>
+                        {% if avatar_url %}
+                            <form method="post" action="/account/avatar/share" class="mt-2">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="btn btn-outline-secondary btn-sm">Поделиться</button>
+                            </form>
+                        {% endif %}
+                        {% if avatar_share_token %}
+                            <div class="input-group input-group-sm mt-2">
+                                <input type="text" class="form-control" value="{{ request.base_url }}shared/avatar/{{ avatar_share_token }}" readonly>
+                            </div>
+                        {% endif %}
                         {% if request.query_params.get('error') == 'invalid_file_type' %}
                             <small class="text-danger mt-1 d-block">Ошибка: Разрешены только изображения.</small>
                         {% elif request.query_params.get('error') == 'file_too_large' %}
-                            <small class="text-danger mt-1 d-block">Ошибка: Файл слишком большой. Максимальный размер: 100MB.</small>
+                            <small class="text-danger mt-1 d-block">Ошибка: Файл слишком большой. Максимальный размер: {{ max_upload_size_mb|default(1024) }}MB.</small>
                         {% elif request.query_params.get('error') == 'empty_file' %}
                             <small class="text-danger mt-1 d-block">Ошибка: Пустой файл.</small>
+                        {% elif request.query_params.get('error') == 'avatar_missing' %}
+                            <small class="text-danger mt-1 d-block">Ошибка: сначала загрузите аватар.</small>
                         {% elif request.query_params.get('error') == 'upload_failed' %}
                             <small class="text-danger mt-1 d-block">Ошибка загрузки файла.</small>
                         {% elif request.query_params.get('avatar_updated') == '1' %}

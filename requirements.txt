@@ -15,6 +15,7 @@ psutil>=5.9.0
 uuid7>=0.1.0
 prometheus-fastapi-instrumentator==7.0.0
 pyotp>=2.9.0
+boto3>=1.34.0
 
 # CVE-2026-23949: уязвимая vendored jaraco.context находится внутри
 # setuptools/_vendor/, поэтому фиксируется обновлением setuptools.

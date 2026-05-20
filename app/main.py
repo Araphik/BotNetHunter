@@ -2,9 +2,11 @@ import os
 import json
 import asyncio
 import uuid
+import mimetypes
+import tempfile
 from contextvars import ContextVar
-from fastapi import FastAPI, Request, Depends, Form, HTTPException, status, Query, BackgroundTasks, UploadFile, File
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, JSONResponse
+from fastapi import FastAPI, Request, Depends, Form, HTTPException, status, Query, BackgroundTasks, UploadFile, File, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.openapi.docs import get_swagger_ui_html
@@ -26,7 +28,7 @@ from app.auth import (
     get_totp_uri, verify_totp, create_temp_2fa_token, decode_temp_2fa_token,
     create_admin_token, is_admin_token
 )
-from config.settings import BASE_DIR, APP_VERSION
+from config.settings import BASE_DIR, APP_VERSION, COOKIE_SECURE
 from config.weights import DEFAULT_REQUESTS_LIMIT
 from config.settings import ADMIN_EMAIL, ADMIN_PASSWORD
 from core.token_manager import TokenManager
@@ -35,6 +37,9 @@ from config.settings import get_app_version
 from utils.logger import logger, request_id_var
 from app.rate_limiter import rate_limiter
 from app.csrf import generate_csrf_token, validate_csrf_token, CSRF_COOKIE_NAME, CSRF_COOKIE_MAX_AGE
+from app.avatar_tokens import create_avatar_share_token, decode_avatar_share_token
+from app.file_storage import get_avatar_storage
+from app.upload_progress import upload_progress_manager
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter
 import logging
@@ -94,7 +99,7 @@ def _set_csrf_cookie(response, new_secret: str | None):
             new_secret,
             httponly=True,
             max_age=CSRF_COOKIE_MAX_AGE,
-            secure=True,
+            secure=COOKIE_SECURE,
             samesite="lax",
         )
     return response
@@ -114,7 +119,57 @@ def csrf_template_response(request, template_name: str, context: dict):
 def wants_json_response(request: Request) -> bool:
     accept = request.headers.get("accept", "")
     requested_with = request.headers.get("x-requested-with", "")
-    return "application/json" in accept or requested_with == "fetch"
+    return "application/json" in accept or requested_with in {"fetch", "XMLHttpRequest"}
+
+
+MAX_UPLOAD_SIZE_BYTES = int(os.getenv("MAX_UPLOAD_SIZE_BYTES", str(1024 * 1024 * 1024)))
+UPLOAD_CHUNK_SIZE = 1024 * 1024
+
+
+def _detect_image_type(header: bytes) -> tuple[str, str] | tuple[None, None]:
+    if header.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg", ".jpg"
+    if header.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png", ".png"
+    if header.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif", ".gif"
+    if len(header) >= 12 and header[:4] == b"RIFF" and header[8:12] == b"WEBP":
+        return "image/webp", ".webp"
+    return None, None
+
+
+def _avatar_upload_error(request: Request, code: str, message: str, status_code: int):
+    if wants_json_response(request):
+        return JSONResponse({"detail": message, "code": code}, status_code=status_code)
+    query_code = {
+        "file_too_large": "file_too_large",
+        "invalid_file_type": "invalid_file_type",
+        "empty_file": "empty_file",
+        "upload_failed": "upload_failed",
+    }.get(code, "upload_failed")
+    return RedirectResponse(url=f"/dashboard?error={query_code}", status_code=303)
+
+
+def _avatar_response(user: User):
+    if not user or not user.avatar_path:
+        raise HTTPException(status_code=404, detail="Аватар не найден")
+
+    stored = get_avatar_storage().open_file(user.avatar_path)
+    if not stored:
+        raise HTTPException(status_code=404, detail="Файл аватара не найден")
+
+    media_type = mimetypes.guess_type(user.avatar_path)[0] or "application/octet-stream"
+    headers = {"Cache-Control": "private, max-age=300"}
+    if stored.path:
+        return FileResponse(stored.path, media_type=media_type, headers=headers)
+    return StreamingResponse(
+        stored.stream,
+        media_type=media_type,
+        headers={
+            **headers,
+            **({"Content-Length": str(stored.content_length)} if stored.content_length else {}),
+        },
+    )
 
 
 def _mark_analysis_failed(db: Session, record_id: int, message: str):
@@ -273,10 +328,6 @@ apply_schema_migrations()
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
-AVATAR_DIR = os.getenv("AVATAR_STORAGE_DIR") or "/tmp/avatars"
-Path(AVATAR_DIR).mkdir(parents=True, exist_ok=True)
-app.mount("/avatars", StaticFiles(directory=AVATAR_DIR), name="avatars")
-
 
 
 # Отключаем дублирующие логи от uvicorn
@@ -383,23 +434,21 @@ async def max_file_size_middleware(request: Request, call_next):
     """
     # Проверяем только роут загрузки аватарки
     if request.url.path == "/account/avatar/upload" and request.method == "POST":
-        MAX_SIZE = 100 * 1024 * 1024  # 100 МБ
-        
         try:
             content_length = request.headers.get("content-length")
             if content_length:
                 try:
                     size = int(content_length)
-                    if size > MAX_SIZE:
+                    if size > MAX_UPLOAD_SIZE_BYTES:
                         logger.warning(
                             f"Попытка загрузки файла {size / 1024 / 1024:.2f}MB "
-                            f"(лимит {MAX_SIZE / 1024 / 1024}MB)"
+                            f"(лимит {MAX_UPLOAD_SIZE_BYTES / 1024 / 1024}MB)"
                         )
-                        # Возвращаем RedirectResponse напрямую
-                        from fastapi.responses import RedirectResponse
-                        return RedirectResponse(
-                            url="/dashboard?error=file_too_large",
-                            status_code=303
+                        return _avatar_upload_error(
+                            request,
+                            "file_too_large",
+                            f"Файл слишком большой. Максимальный размер: {MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)}MB.",
+                            413,
                         )
                 except (ValueError, TypeError):
                     # Если не удалось распарсить размер, пропускаем проверку
@@ -591,8 +640,8 @@ async def login(request: Request, email: str = Form(...), password: str = Form(.
     
     if is_admin_login(email, password):
         response = RedirectResponse(url="/admin", status_code=303)
-        response.set_cookie("admin_email", ADMIN_EMAIL, httponly=True, max_age=86400, secure=True, samesite="lax")
-        response.set_cookie("admin_token", create_admin_token(), httponly=True, max_age=86400, secure=True, samesite="lax")
+        response.set_cookie("admin_email", ADMIN_EMAIL, httponly=True, max_age=86400, secure=COOKIE_SECURE, samesite="lax")
+        response.set_cookie("admin_token", create_admin_token(), httponly=True, max_age=86400, secure=COOKIE_SECURE, samesite="lax")
         
         return response
     
@@ -606,12 +655,12 @@ async def login(request: Request, email: str = Form(...), password: str = Form(.
     if user.is_2fa_enabled and user.totp_secret:
         temp_token = create_temp_2fa_token({"sub": user.email})
         response = RedirectResponse(url="/login/2fa", status_code=303)
-        response.set_cookie("temp_2fa", temp_token, httponly=True, max_age=300, secure=True, samesite="lax")
+        response.set_cookie("temp_2fa", temp_token, httponly=True, max_age=300, secure=COOKIE_SECURE, samesite="lax")
         return response
     
     token = create_access_token(data={"sub": user.email})
     response = RedirectResponse(url="/dashboard", status_code=303)
-    response.set_cookie(key="token", value=token, httponly=True, max_age=86400, secure=True, samesite="lax")
+    response.set_cookie(key="token", value=token, httponly=True, max_age=86400, secure=COOKIE_SECURE, samesite="lax")
     create_session(db, user.id, token, request.headers.get("user-agent"), request.client.host if request.client else None)
     return response
 
@@ -636,7 +685,7 @@ async def register(request: Request, email: str = Form(...), password: str = For
     
     token = create_access_token(data={"sub": new_user.email})
     response = RedirectResponse(url="/dashboard", status_code=303)
-    response.set_cookie(key="token", value=token, httponly=True, max_age=86400, secure=True, samesite="lax")
+    response.set_cookie(key="token", value=token, httponly=True, max_age=86400, secure=COOKIE_SECURE, samesite="lax")
     create_session(db, new_user.id, token, request.headers.get("user-agent"), request.client.host if request.client else None)
     
     return response
@@ -673,8 +722,9 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     # Конвертируем время пользователя в московское
     user.created_at_msk = to_msk_time(user.created_at) if user.created_at else None
     
-    # Формируем URL аватарки
-    avatar_url = f"/avatars/{user.avatar_path}" if user.avatar_path else None
+    # Формируем контролируемый URL аватарки; прямой доступ к файлу из ФС не раскрываем.
+    avatar_url = f"/account/avatar/me?v={user.avatar_path}" if user.avatar_path else None
+    avatar_share_token = request.query_params.get("avatar_share_token")
     
     token, new_secret = generate_csrf_token(request)
     response = templates.TemplateResponse(request, "dashboard.html", {
@@ -686,7 +736,9 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         "requests_left": requests_left,
         "csrf_token": token,
         "pending_analysis": pending_analysis,
-        "avatar_url": avatar_url,  # <-- Добавляем avatar_url
+        "avatar_url": avatar_url,
+        "avatar_share_token": avatar_share_token,
+        "max_upload_size_mb": MAX_UPLOAD_SIZE_BYTES // (1024 * 1024),
     })
     _set_csrf_cookie(response, new_secret)
     response.headers["X-RateLimit-Limit"] = str(user.requests_limit)
@@ -974,28 +1026,58 @@ async def delete_account(request: Request, db: Session = Depends(get_db)):
     response.delete_cookie("token")
     return response
 
+
+@app.websocket("/ws/uploads/{upload_id}")
+async def upload_progress_ws(websocket: WebSocket, upload_id: str):
+    await upload_progress_manager.connect(upload_id, websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        upload_progress_manager.disconnect(upload_id, websocket)
+
+
+@app.get("/account/avatar/me", tags=["Web UI"], include_in_schema=False)
+async def get_my_avatar(request: Request, db: Session = Depends(get_db)):
+    user = get_user_from_cookie(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    return _avatar_response(user)
+
+
+@app.post("/account/avatar/share", tags=["Web UI"], include_in_schema=False)
+async def share_avatar(request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db)):
+    if not validate_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+    user = get_user_from_cookie(request, db)
+    if not user:
+        return RedirectResponse(url="/")
+    if not user.avatar_path:
+        return RedirectResponse(url="/dashboard?error=avatar_missing", status_code=303)
+
+    token = create_avatar_share_token(user.id)
+    if wants_json_response(request):
+        return JSONResponse({"url": f"{request.base_url}shared/avatar/{token}"})
+    return RedirectResponse(url=f"/dashboard?avatar_share_token={token}", status_code=303)
+
+
+@app.get("/shared/avatar/{token}", tags=["Public"], include_in_schema=False)
+async def shared_avatar(token: str, db: Session = Depends(get_db)):
+    user_id = decode_avatar_share_token(token)
+    if not user_id:
+        raise HTTPException(status_code=404, detail="Файл не найден")
+    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    return _avatar_response(user)
+
+
 @app.post("/account/avatar/upload", tags=["Web UI"], include_in_schema=False)
 async def upload_avatar(
     request: Request,
     file: UploadFile = File(...),
     csrf_token: str = Form(...),
+    upload_id: str | None = Form(None),
     db: Session = Depends(get_db)
 ):
-    
-    try:
-        content_length = request.headers.get("content-length")
-        if content_length:
-            size = int(content_length)
-            MAX_SIZE = 100 * 1024 * 1024
-            if size > MAX_SIZE:
-                logger.warning(f"Файл слишком большой: {size / 1024 / 1024:.2f}MB")
-                return RedirectResponse(
-                    url="/dashboard?error=file_too_large",
-                    status_code=303
-                )
-    except (ValueError, TypeError):
-        pass
-
     if not validate_csrf_token(request, csrf_token):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
         
@@ -1003,89 +1085,106 @@ async def upload_avatar(
     if not user:
         return RedirectResponse(url="/")
 
-    MAX_AVATAR_SIZE = 100 * 1024 * 1024  # 100MB
-    
-    # Проверяем размер файла ЧЕРЕЗ Content-Length header ДО чтения
-    content_length = request.headers.get("content-length")
-    if content_length:
-        # Вычитаем размер других полей формы (примерно 1-2KB)
-        estimated_file_size = int(content_length) - 2048
-        if estimated_file_size > MAX_AVATAR_SIZE:
-            logger.warning(
-                f"Пользователь {user.email} попытался загрузить файл "
-                f"размером {estimated_file_size / 1024 / 1024:.2f}MB (лимит {MAX_AVATAR_SIZE / 1024 / 1024}MB)"
-            )
-            return RedirectResponse(
-                url="/dashboard?error=file_too_large",
-                status_code=303
-            )
-
-    # Базовая проверка типа файла
-    if not file.content_type or not file.content_type.startswith("image/"):
-        return RedirectResponse(url="/dashboard?error=invalid_file_type", status_code=303)
-
-    # Используем директорию для аватарок
-    AVATAR_DIR = os.getenv("AVATAR_STORAGE_DIR") or "/tmp/avatars"
-    avatar_path = Path(AVATAR_DIR)
-    avatar_path.mkdir(parents=True, exist_ok=True)
-
-    # Генерируем безопасное уникальное имя файла
-    _, ext = os.path.splitext(file.filename or ".jpg")
-    ext = ext.lower()
-    if ext not in (".jpg", ".jpeg", ".png", ".gif", ".webp"):
-        ext = ".jpg"
-    unique_name = f"avatar_{user.id}_{uuid.uuid4().hex}{ext}"
-    file_path = avatar_path / unique_name
-
     try:
-        # Сохраняем файл потоково с проверкой размера
-        total_size = 0
-        with file_path.open("wb") as buffer:
+        content_length = int(request.headers.get("content-length", "0") or 0)
+    except ValueError:
+        content_length = 0
+    if content_length > MAX_UPLOAD_SIZE_BYTES:
+        logger.warning(f"Файл слишком большой: {content_length / 1024 / 1024:.2f}MB")
+        return _avatar_upload_error(
+            request,
+            "file_too_large",
+            f"Файл слишком большой. Максимальный размер: {MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)}MB.",
+            413,
+        )
+
+    await upload_progress_manager.publish(upload_id, {"phase": "processing", "percent": 1})
+
+    tmp_path = None
+    try:
+        first_chunk = await file.read(UPLOAD_CHUNK_SIZE)
+        if not first_chunk:
+            await upload_progress_manager.publish(upload_id, {"phase": "error", "percent": 0})
+            return _avatar_upload_error(request, "empty_file", "Пустой файл.", 400)
+
+        detected_type, ext = _detect_image_type(first_chunk)
+        if not detected_type:
+            await upload_progress_manager.publish(upload_id, {"phase": "error", "percent": 0})
+            return _avatar_upload_error(
+                request,
+                "invalid_file_type",
+                "Неподдерживаемый тип файла. Разрешены только JPG, PNG, GIF и WebP.",
+                415,
+            )
+
+        total_size = len(first_chunk)
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+        tmp_path = Path(temp_file.name)
+        with temp_file:
+            temp_file.write(first_chunk)
+            await upload_progress_manager.publish(upload_id, {"phase": "processing", "percent": 10})
+
             while True:
-                chunk = await file.read(1024 * 1024)  # Читаем по 1MB
+                chunk = await file.read(UPLOAD_CHUNK_SIZE)
                 if not chunk:
                     break
+
                 total_size += len(chunk)
-                
-                # Проверяем лимит во время загрузки
-                if total_size > MAX_AVATAR_SIZE:
-                    buffer.close()
-                    file_path.unlink(missing_ok=True)
+                if total_size > MAX_UPLOAD_SIZE_BYTES:
+                    tmp_path.unlink(missing_ok=True)
+                    await upload_progress_manager.publish(upload_id, {"phase": "error", "percent": 0})
                     logger.warning(
-                        f"Файл {unique_name} превысил лимит: {total_size / 1024 / 1024:.2f}MB"
+                        f"Файл превысил лимит: {total_size / 1024 / 1024:.2f}MB"
                     )
-                    return RedirectResponse(
-                        url="/dashboard?error=file_too_large",
-                        status_code=303
+                    return _avatar_upload_error(
+                        request,
+                        "file_too_large",
+                        f"Файл слишком большой. Максимальный размер: {MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)}MB.",
+                        413,
                     )
-                
-                buffer.write(chunk)
-                
+
+                temp_file.write(chunk)
+                if content_length:
+                    percent = min(90, 10 + int(total_size / max(content_length, 1) * 80))
+                    await upload_progress_manager.publish(upload_id, {"phase": "processing", "percent": percent})
+
+        unique_name = f"avatar_{user.id}_{uuid.uuid4().hex}{ext}"
+        await upload_progress_manager.publish(upload_id, {"phase": "storing", "percent": 92})
+        storage = get_avatar_storage()
+        storage.save_file(tmp_path, unique_name, detected_type)
+        tmp_path = None
+
+        old_avatar = user.avatar_path
+        user.avatar_path = unique_name
+        db.commit()
+
+        if old_avatar:
+            try:
+                storage.delete_file(old_avatar)
+            except Exception:
+                logger.warning(f"Не удалось удалить старый аватар {old_avatar}")
+
+        logger.info(
+            f"Пользователь {user.email} загрузил аватар {unique_name} "
+            f"({total_size / 1024 / 1024:.2f}MB)"
+        )
+        await upload_progress_manager.publish(upload_id, {"phase": "done", "percent": 100})
+
+        if wants_json_response(request):
+            return JSONResponse({
+                "avatar_url": f"/account/avatar/me?v={unique_name}",
+                "message": "Аватар успешно обновлен",
+            })
+        return RedirectResponse(url="/dashboard?avatar_updated=1", status_code=303)
+
     except Exception as e:
         logger.error(f"Ошибка сохранения аватара: {e}")
-        if file_path.exists():
-            file_path.unlink(missing_ok=True)
-        return RedirectResponse(url="/dashboard?error=upload_failed", status_code=303)
-
-    # Удаляем старую аватарку, если она была
-    old_avatar = user.avatar_path
-    if old_avatar:
-        old_path = avatar_path / old_avatar
-        if old_path.exists():
-            try:
-                os.remove(old_path)
-            except OSError:
-                pass
-
-    # Обновляем путь в БД (храним только имя файла)
-    user.avatar_path = unique_name
-    db.commit()
-
-    logger.info(
-        f"Пользователь {user.email} загрузил аватар {unique_name} "
-        f"({total_size / 1024 / 1024:.2f}MB)"
-    )
-    return RedirectResponse(url="/dashboard?avatar_updated=1", status_code=303)
+        if tmp_path:
+            tmp_path.unlink(missing_ok=True)
+        await upload_progress_manager.publish(upload_id, {"phase": "error", "percent": 0})
+        return _avatar_upload_error(request, "upload_failed", "Ошибка загрузки файла.", 500)
+    finally:
+        await file.close()
 
 # REST API 
 @app.post("/api/analyze", response_model=AnalyzeResponse, tags=["API"], status_code=status.HTTP_201_CREATED)
@@ -1686,7 +1785,7 @@ async def login_2fa_verify(request: Request, otp_code: str = Form(...), csrf_tok
     
     token = create_access_token(data={"sub": user.email})
     response = RedirectResponse(url="/dashboard", status_code=303)
-    response.set_cookie(key="token", value=token, httponly=True, max_age=86400, secure=True, samesite="lax")
+    response.set_cookie(key="token", value=token, httponly=True, max_age=86400, secure=COOKIE_SECURE, samesite="lax")
     response.delete_cookie("temp_2fa")
     
     create_session(db, user.id, token, request.headers.get("user-agent"), request.client.host if request.client else None)
