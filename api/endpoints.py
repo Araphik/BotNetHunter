@@ -46,7 +46,6 @@ def _get_settings(key, default):
         else:
             logger.debug(f"Настройка {db_key} не найдена в БД, используется дефолт: {default}")
     except Exception as e:
-        from utils.logger import logger
         logger.warning(f"Ошибка получения настройки {key}: {e}")
     return default
 
