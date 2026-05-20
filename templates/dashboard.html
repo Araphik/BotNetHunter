@@ -17,7 +17,6 @@
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
                 {% endif %}
-
                 <form method="post" action="/analyze" id="analyzeForm" data-pending-analysis-id="{{ pending_analysis.id if pending_analysis else '' }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="target_type" value="group">
@@ -45,11 +44,9 @@
                         </button>
                     </div>
                 </form>
-
                 <div class="small text-muted mt-2 {% if not pending_analysis %}d-none{% endif %}" id="analysisStatusText">
                     Запрос принят. Результат откроется автоматически после завершения.
                 </div>
-
                 <hr class="my-4">
                 <div class="bg-light rounded p-3">
                     <h6 class="fw-bold mb-2">Лимит запросов</h6>
@@ -76,7 +73,6 @@
             </div>
         </div>
     </div>
-
     <div class="col-lg-7">
         <div class="card shadow h-100">
             <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
@@ -161,6 +157,7 @@
     </div>
 </div>
 
+<!-- Настройки аккаунта -->
 <div class="row mt-4">
     <div class="col-12">
         <div class="card border-secondary">
@@ -168,6 +165,33 @@
                 <h6 class="mb-0">Настройки аккаунта</h6>
             </div>
             <div class="card-body">
+                <!-- Блок аватарки -->
+                <div class="d-flex align-items-center gap-3 mb-3 pb-3 border-bottom">
+                    {% if avatar_url %}
+                        <img src="{{ avatar_url }}" alt="Аватар" class="rounded-circle" width="80" height="80" style="object-fit: cover; border: 2px solid #dee2e6; background: #fff;">
+                    {% else %}
+                        <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center text-white fw-bold" style="width: 80px; height: 80px; font-size: 28px; background: linear-gradient(135deg, #6c757d, #495057);">
+                            {{ user.email[0]|upper }}
+                        </div>
+                    {% endif %}
+                    <div class="flex-grow-1">
+                        <h6 class="mb-1">Управление аватаром</h6>
+                        <form method="post" action="/account/avatar/upload" enctype="multipart/form-data">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <div class="input-group input-group-sm">
+                                <input type="file" name="file" class="form-control form-control-sm" accept="image/*" required>
+                                <button type="submit" class="btn btn-outline-primary btn-sm">Загрузить</button>
+                            </div>
+                        </form>
+                        {% if request.query_params.get('error') == 'invalid_file_type' %}
+                            <small class="text-danger mt-1 d-block">Ошибка загрузки</small>
+                        {% elif request.query_params.get('avatar_updated') == '1' %}
+                            <small class="text-success mt-1 d-block">Аватар успешно обновлен!</small>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Основные данные и кнопки -->
                 <div class="row align-items-center">
                     <div class="col-md-8">
                         <p class="mb-1"><strong>Email:</strong> {{ user.email }}</p>
@@ -179,12 +203,12 @@
                     </div>
                     <div class="col-md-4 text-md-end mt-3 mt-md-0 d-flex flex-column flex-md-row gap-2 justify-content-md-end">
                         {% if not user.is_2fa_enabled %}
-                        <a href="/account/2fa/setup" class="btn btn-outline-success btn-sm">Подключить 2FA</a>
+                            <a href="/account/2fa/setup" class="btn btn-outline-success btn-sm">Подключить 2FA</a>
                         {% else %}
-                        <form method="post" action="/account/2fa/disable" class="d-inline" onsubmit="return confirm('Отключить двухфакторную аутентификацию? Это снизит безопасность аккаунта.');">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button type="submit" class="btn btn-outline-warning btn-sm">Отключить 2FA</button>
-                        </form>
+                            <form method="post" action="/account/2fa/disable" class="d-inline" onsubmit="return confirm('Отключить двухфакторную аутентификацию? Это снизит безопасность аккаунта.');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="btn btn-outline-warning btn-sm">Отключить 2FA</button>
+                            </form>
                         {% endif %}
                         <a href="/account/change-password" class="btn btn-outline-primary btn-sm">Сменить пароль</a>
                         <form method="post" action="/account/delete" class="d-inline" onsubmit="return confirm('Вы уверены? Все данные будут удалены без возможности восстановления.');">
@@ -196,5 +220,6 @@
         </div>
     </div>
 </div>
+
 <script src="/static/js/dashboard.js" defer></script>
 {% endblock %}

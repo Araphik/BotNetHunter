@@ -3,7 +3,7 @@ import json
 import asyncio
 import uuid
 from contextvars import ContextVar
-from fastapi import FastAPI, Request, Depends, Form, HTTPException, status, Query, BackgroundTasks
+from fastapi import FastAPI, Request, Depends, Form, HTTPException, status, Query, BackgroundTasks, UploadFile, File
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -14,6 +14,7 @@ from sqlalchemy import func, inspect, text
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 import hashlib
+import shutil
 
 from app.database import get_db, engine, Base, SessionLocal
 from app.models import (
@@ -65,6 +66,9 @@ def apply_schema_migrations():
             statements.append("ALTER TABLE users ADD COLUMN is_2fa_enabled BOOLEAN NOT NULL DEFAULT false")
         else:
             statements.append("ALTER TABLE users ADD COLUMN is_2fa_enabled BOOLEAN NOT NULL DEFAULT 0")
+
+    if "avatar_path" not in existing_columns:
+        statements.append("ALTER TABLE users ADD COLUMN avatar_path VARCHAR(255)")
 
     if not statements:
         return
@@ -217,6 +221,10 @@ Base.metadata.create_all(bind=engine)
 apply_schema_migrations()
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
+AVATAR_DIR = os.getenv("AVATAR_STORAGE_DIR") or "/tmp/avatars"
+Path(AVATAR_DIR).mkdir(parents=True, exist_ok=True)
+app.mount("/avatars", StaticFiles(directory=AVATAR_DIR), name="avatars")
 
 # Отключаем дублирующие логи от uvicorn
 logging.getLogger("uvicorn.access").disabled = True
@@ -568,28 +576,34 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     for h in history_raw:
         h.created_at_msk = to_msk_time(h.created_at) if h.created_at else None
         history.append(h)
-    pending_analysis = next((h for h in history if h.status == "pending"), None)
     
+    pending_analysis = next((h for h in history if h.status == "pending"), None)
     progress_percent = min(user.requests_today / max(user.requests_limit, 1) * 100, 100)
     requests_left = max(user.requests_limit - user.requests_today, 0)
     
     # Конвертируем время пользователя в московское
     user.created_at_msk = to_msk_time(user.created_at) if user.created_at else None
     
+    # Формируем URL аватарки
+    avatar_url = f"/avatars/{user.avatar_path}" if user.avatar_path else None
+    
     token, new_secret = generate_csrf_token(request)
     response = templates.TemplateResponse(request, "dashboard.html", {
-        "request": request, "user": user, "history": history, "error": None,
-        "progress_percent": progress_percent, "requests_left": requests_left,
+        "request": request, 
+        "user": user, 
+        "history": history, 
+        "error": None,
+        "progress_percent": progress_percent, 
+        "requests_left": requests_left,
         "csrf_token": token,
         "pending_analysis": pending_analysis,
+        "avatar_url": avatar_url,  # <-- Добавляем avatar_url
     })
     _set_csrf_cookie(response, new_secret)
-    
     response.headers["X-RateLimit-Limit"] = str(user.requests_limit)
     response.headers["X-RateLimit-Remaining"] = str(requests_left)
     reset_time = to_msk_time(datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1))
     response.headers["X-RateLimit-Reset"] = str(int(reset_time.timestamp()))
-    
     return response
     
 
@@ -798,6 +812,56 @@ async def delete_account(request: Request, db: Session = Depends(get_db)):
     response.delete_cookie("token")
     return response
 
+@app.post("/account/avatar/upload", tags=["Web UI"], include_in_schema=False)
+async def upload_avatar(
+    request: Request,
+    file: UploadFile = File(...),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    if not validate_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+        
+    user = get_user_from_cookie(request, db)
+    if not user:
+        return RedirectResponse(url="/")
+
+    # Базовая проверка типа файла
+    if not file.content_type or not file.content_type.startswith("image/"):
+        return RedirectResponse(url="/dashboard?error=invalid_file_type", status_code=303)
+
+    # Используем директорию для аватарок
+    AVATAR_DIR = os.getenv("AVATAR_STORAGE_DIR") or "/tmp/avatars"
+    avatar_path = Path(AVATAR_DIR)
+    avatar_path.mkdir(parents=True, exist_ok=True)
+
+    # Генерируем безопасное уникальное имя файла
+    _, ext = os.path.splitext(file.filename or ".jpg")
+    ext = ext.lower()
+    if ext not in (".jpg", ".jpeg", ".png", ".gif", ".webp"):
+        ext = ".jpg"
+    unique_name = f"avatar_{user.id}_{uuid.uuid4().hex}{ext}"
+    file_path = avatar_path / unique_name
+
+    # Сохраняем файл (streaming)
+    with file_path.open("wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # Удаляем старую аватарку, если она была
+    old_avatar = user.avatar_path
+    if old_avatar:
+        old_path = avatar_path / old_avatar
+        if old_path.exists():
+            try:
+                os.remove(old_path)
+            except OSError:
+                pass
+
+    # Обновляем путь в БД (храним только имя файла)
+    user.avatar_path = unique_name
+    db.commit()
+
+    return RedirectResponse(url="/dashboard?avatar_updated=1", status_code=303)
 
 # REST API 
 @app.post("/api/analyze", response_model=AnalyzeResponse, tags=["API"], status_code=status.HTTP_201_CREATED)

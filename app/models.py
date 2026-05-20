@@ -23,7 +23,6 @@ class Session(Base):
     user = relationship("User", back_populates="sessions")
 
 class User(Base):
-    
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
@@ -34,15 +33,12 @@ class User(Base):
     requests_today = Column(Integer, default=0)
     last_request_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
     totp_secret = Column(String(32), nullable=True)
     is_2fa_enabled = Column(Boolean, default=False)
-    sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
+    avatar_path = Column(String(255), nullable=True)
     
+    sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
     history = relationship("AnalysisHistory", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
-
-    def __repr__(self):
-        return f"<User(email='{self.email}', is_admin={self.is_admin})>"
 
 class AnalysisHistory(Base):
     __tablename__ = "analysis_history"
