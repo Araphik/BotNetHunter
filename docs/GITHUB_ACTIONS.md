@@ -90,7 +90,7 @@ ghcr.io/<owner>/<repo>:sha-<short-sha>
 - `botnethunter-<version>-docker-image.tar.gz`;
 - `SHA256SUMS`.
 
-Trivy в GitHub Actions не загружает JSON/SARIF как workflow artifact, потому что GitHub artifact storage может закончиться и заблокировать upload. Code scanning alerts тоже не используются: в личном репозитории GitHub может держать эту функцию выключенной без GitHub Advanced Security. GitHub Pages для приватного репозитория также может быть недоступен на бесплатном плане. Вместо этого отчеты можно смотреть без artifact storage, Code Scanning и Pages:
+Trivy в GitHub Actions сканирует все известные OS и library vulnerabilities, включая уязвимости без доступной fixed version. JSON/SARIF не загружаются как workflow artifact, потому что GitHub artifact storage может закончиться и заблокировать upload. Code scanning alerts тоже не используются: в личном репозитории GitHub может держать эту функцию выключенной без GitHub Advanced Security. GitHub Pages для приватного репозитория также может быть недоступен на бесплатном плане. Вместо этого отчеты можно смотреть без artifact storage, Code Scanning и Pages:
 
 - в `Actions -> CI -> container-scan-trivy-job -> Summary` - краткая Markdown-сводка с количеством уязвимостей и top findings;
 - в папке `reports/` основной ветки - GitHub хранит `trivy-image-report.txt`, `trivy-image-report.json`, `trivy-image-report.md` и интерактивный `trivy-image-report.html`;

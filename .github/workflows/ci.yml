@@ -278,7 +278,6 @@ jobs:
           format: table
           output: trivy-image-report.txt
           exit-code: '0'
-          ignore-unfixed: true
           vuln-type: os,library
 
       - name: Run Aqua Trivy JSON scan
@@ -288,7 +287,6 @@ jobs:
           format: json
           output: trivy-image-report.json
           exit-code: '0'
-          ignore-unfixed: true
           vuln-type: os,library
 
       - name: Build Trivy HTML report
