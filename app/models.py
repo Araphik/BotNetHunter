@@ -37,6 +37,7 @@ class User(Base):
     is_2fa_enabled = Column(Boolean, default=False)
     avatar_path = Column(String(255), nullable=True)
     
+    shared_links = relationship("SharedReport", back_populates="user")
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
     history = relationship("AnalysisHistory", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
 
@@ -60,7 +61,9 @@ class AnalysisHistory(Base):
     completed_at = Column(DateTime, nullable=True)
     status = Column(String(20), default="completed")
     
+    
     user = relationship("User", back_populates="history")
+    shared_links = relationship("SharedReport", back_populates="history")
 
     def __repr__(self):
         return f"<AnalysisHistory(id={self.id}, target='{self.target}', type='{self.target_type}')>"
@@ -165,3 +168,16 @@ class APIError(BaseModel):
     error: str
     detail: Optional[str] = None
     code: Optional[int] = 400
+
+class SharedReport(Base):
+    __tablename__ = "shared_reports"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String(100), unique=True, nullable=False, index=True) # Уникальная ссылка
+    history_id = Column(Integer, ForeignKey("analysis_history.id"), nullable=False) # К какому отчету привязка
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False) # Кто расшарил
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True) # Ссылка может истекать
+    
+    history = relationship("AnalysisHistory", back_populates="shared_links")
+    user = relationship("User", back_populates="shared_links")
