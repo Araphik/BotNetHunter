@@ -127,6 +127,54 @@ def _mark_analysis_failed(db: Session, record_id: int, message: str):
     db.commit()
 
 
+def _apply_group_result(db, record_id: int, record, user, tm) -> bool:
+    """Запускает анализ группы и применяет результат к record. Возвращает False при ошибке."""
+    group_result = analyze_group(record.target, tm)
+    if not group_result or group_result["posts_analyzed"] == 0:
+        _mark_analysis_failed(db, record_id, "Не удалось получить посты группы или стена закрыта.")
+        return False
+
+    avg = group_result["average_score"]
+    record.score = None
+    record.risk_level = "HIGH" if avg > 60 else "MEDIUM" if avg > 30 else "NORMAL"
+    record.details = json.dumps(group_result.get("details", {}), ensure_ascii=False)
+    record.average_score = avg
+    record.score_distribution = json.dumps(group_result["distribution"], ensure_ascii=False)
+    record.members_analyzed = group_result["members_analyzed"]
+
+    if user:
+        user.requests_today += group_result["members_analyzed"]
+        user.last_request_date = datetime.now(MSK_TZ)
+    return True
+
+
+def _apply_user_result(db, record_id: int, record, user, tm) -> bool:
+    """Запускает анализ профиля и применяет результат к record. Возвращает False при ошибке."""
+    result = analyze_user(record.target, tm)
+    if not result:
+        _mark_analysis_failed(db, record_id, "Не удалось получить данные профиля.")
+        return False
+
+    record.score = result.total_score
+    record.risk_level = result.risk_level
+    record.details = json.dumps({
+        "reasons": result.reasons,
+        "anomalies": result.anomalies,
+        "profile": {
+            "id": result.user_id,
+            "screen_name": result.profile_data.screen_name if result.profile_data else "",
+        },
+    }, ensure_ascii=False)
+    record.average_score = None
+    record.score_distribution = None
+    record.members_analyzed = 1
+
+    if user:
+        user.requests_today += 1
+        user.last_request_date = datetime.now(MSK_TZ)
+    return True
+
+
 def run_analysis_job(record_id: int):
     db = SessionLocal()
     try:
@@ -140,46 +188,9 @@ def run_analysis_job(record_id: int):
             return
 
         user = db.query(User).filter(User.id == record.user_id).first()
-
-        if record.target_type == "group":
-            group_result = analyze_group(record.target, tm)
-            if not group_result or group_result["posts_analyzed"] == 0:
-                _mark_analysis_failed(db, record_id, "Не удалось получить посты группы или стена закрыта.")
-                return
-
-            record.score = None
-            record.risk_level = "HIGH" if group_result["average_score"] > 60 else "MEDIUM" if group_result["average_score"] > 30 else "NORMAL"
-            record.details = json.dumps(group_result.get("details", {}), ensure_ascii=False)
-            record.average_score = group_result["average_score"]
-            record.score_distribution = json.dumps(group_result["distribution"], ensure_ascii=False)
-            record.members_analyzed = group_result["members_analyzed"]
-
-            if user:
-                user.requests_today += group_result["members_analyzed"]
-                user.last_request_date = datetime.now(MSK_TZ)
-        else:
-            result = analyze_user(record.target, tm)
-            if not result:
-                _mark_analysis_failed(db, record_id, "Не удалось получить данные профиля.")
-                return
-
-            record.score = result.total_score
-            record.risk_level = result.risk_level
-            record.details = json.dumps({
-                "reasons": result.reasons,
-                "anomalies": result.anomalies,
-                "profile": {
-                    "id": result.user_id,
-                    "screen_name": result.profile_data.screen_name if result.profile_data else "",
-                },
-            }, ensure_ascii=False)
-            record.average_score = None
-            record.score_distribution = None
-            record.members_analyzed = 1
-
-            if user:
-                user.requests_today += 1
-                user.last_request_date = datetime.now(MSK_TZ)
+        handler = _apply_group_result if record.target_type == "group" else _apply_user_result
+        if not handler(db, record_id, record, user, tm):
+            return
 
         record.status = "completed"
         record.completed_at = datetime.now(MSK_TZ)

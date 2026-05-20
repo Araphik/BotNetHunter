@@ -69,61 +69,91 @@ def _normalize_group_id(group_input: str) -> str:
             return screen_name
     return group_input
 
-def analyze_user(user_input: str, token_manager, fast_mode: bool = True) -> dict | None:
-    """
-    Анализ профиля пользователя (только быстрый режим).
-    Возвращает dict: {'score': 0-100, 'risk_level': str, 'reasons': [{'reason': str, 'points': int}, ...]}
-    """
-    vk = VKClient(token_manager)
+_RISK_LEVELS = ((70, 'HIGH'), (40, 'MEDIUM'), (15, 'LOW'))
+_USER_FIELDS = 'screen_name,photo_max_orig,photo_200,city,country,sex,bdate,last_seen,counters'
+
+
+def _parse_profile_reason(reason: str) -> dict:
+    """Извлекает очки и чистый текст из строки причины ProfileAnalyzer."""
+    match = re.search(r'\+\s*(\d+)\s*бал', reason)
+    points = int(match.group(1)) if match else 0
+    clean_reason = re.sub(r'\s*\(\+\d+\s*бал\.\)$', '', reason)
+    return {'reason': clean_reason, 'points': points}
+
+
+def _classify_risk(score: int) -> str:
+    for threshold, level in _RISK_LEVELS:
+        if score >= threshold:
+            return level
+    return 'NORMAL'
+
+
+def _fetch_user_profile(vk: VKClient, user_input: str) -> UserProfile | None:
+    """Запрашивает и возвращает профиль пользователя или None при ошибке."""
     parsed_id = parse_user_input(user_input)
-    
-    fields = 'screen_name,photo_max_orig,photo_200,city,country,sex,bdate,last_seen,counters'
-    data, status = vk.get_user(parsed_id, fields)
+    data, status = vk.get_user(parsed_id, _USER_FIELDS)
     if status != 'ok' or not data or 'response' not in data or not data['response']:
         logger.error(f'Ошибка {status} при получении данных {parsed_id}')
         return None
-    
-    profile = UserProfile(data['response'][0])
-    total_score = 0
-    all_reasons = []
-    
+    return UserProfile(data['response'][0])
 
-    score, reasons = ProfileAnalyzer(vk).analyze(profile)
-    for reason in reasons:
-        
-        match = re.search(r'\+\s*(\d+)\s*бал', reason)
-        points = int(match.group(1)) if match else 0
-        clean_reason = re.sub(r'\s*\(\+\d+\s*бал\.\)$', '', reason)
-        all_reasons.append({'reason': clean_reason, 'points': points})
-        total_score += points
-    
+
+def _check_geo_anomaly(vk: VKClient, profile: UserProfile) -> dict | None:
+    """Проверяет гео-аномалию по друзьям. Возвращает причину-dict или None."""
+    fr_data, fr_status = vk.get_friends(profile.id, count=30)
+    if fr_status != 'ok' or not fr_data or 'response' not in fr_data:
+        return None
+    items = fr_data['response'].get('items', [])
+    ids = [f['id'] for f in items[:30] if f['id'] > 0]
+    if not ids or not profile.city:
+        return None
+    f_data, _ = vk.get_user(','.join(map(str, ids)), 'city')
+    if not f_data or 'response' not in f_data:
+        return None
+    cities = [f.get('city', {}).get('title') for f in f_data['response'] if f.get('city')]
+    if not cities:
+        return None
+    city_counts = Counter(cities)
+    ratio = city_counts.get(profile.city, 0) / len(cities)
+    if ratio >= 0.1:
+        return None
+    penalty = int(_get_settings('penalty_prof_geo_anomaly', 20))
+    top = city_counts.most_common(1)[0]
+    return {
+        'reason': (
+            f'Гео-аномалия: пользователь из {profile.city}, '
+            f'но только {int(ratio * 100)}% друзей оттуда (чаще: {top[0]})'
+        ),
+        'points': penalty,
+    }
+
+
+def analyze_user(user_input: str, token_manager) -> dict | None:
+    """
+    Анализ профиля пользователя.
+    Возвращает dict: {'score': 0-100, 'risk_level': str, 'reasons': [{'reason': str, 'points': int}, ...]}
+    """
+    vk = VKClient(token_manager)
+    profile = _fetch_user_profile(vk, user_input)
+    if profile is None:
+        return None
+
+    _, raw_reasons = ProfileAnalyzer(vk).analyze(profile)
+    all_reasons = [_parse_profile_reason(r) for r in raw_reasons]
+    total_score = sum(r['points'] for r in all_reasons)
 
     try:
-        fr_data, fr_status = vk.get_friends(profile.id, count=30)
-        if fr_status == 'ok' and fr_data and 'response' in fr_data and fr_data['response'].get('items'):
-            ids = [f['id'] for f in fr_data['response']['items'][:30] if f['id'] > 0]
-            if ids and profile.city:
-                f_data, _ = vk.get_user(','.join(map(str, ids)), 'city')
-                if f_data and 'response' in f_data:
-                    cities = [f.get('city', {}).get('title') for f in f_data['response'] if f.get('city')]
-                    if cities:
-                        city_counts = Counter(cities)
-                        ratio = city_counts.get(profile.city, 0) / len(cities)
-                        if ratio < 0.1:
-                            penalty = int(_get_settings('penalty_prof_geo_anomaly', 20))
-                            total_score += penalty
-                            top = city_counts.most_common(1)[0]
-                            all_reasons.append({
-                                'reason': f'Гео-аномалия: пользователь из {profile.city}, но только {int(ratio*100)}% друзей оттуда (чаще: {top[0]})',
-                                'points': penalty
-                            })
+        geo_finding = _check_geo_anomaly(vk, profile)
+        if geo_finding:
+            all_reasons.append(geo_finding)
+            total_score += geo_finding['points']
     except Exception:
         pass
-    
+
     return {
         'score': min(total_score, 100),
-        'risk_level': 'HIGH' if total_score >= 70 else 'MEDIUM' if total_score >= 40 else 'LOW' if total_score >= 15 else 'NORMAL',
-        'reasons': all_reasons
+        'risk_level': _classify_risk(total_score),
+        'reasons': all_reasons,
     }
 
 
@@ -188,7 +218,7 @@ def analyze_group(group_id: str, token_manager, max_members: int = 100) -> dict 
         if isinstance(finding, dict) and 'user_id' in finding:
             uid = finding['user_id']
             try:
-                profile_result = analyze_user(str(uid), token_manager, fast_mode=True)
+                profile_result = analyze_user(str(uid), token_manager)
                 if profile_result:
                     finding['profile_analysis'] = profile_result
                     logger.info(f"Профиль id{uid} проанализирован: {profile_result.get('score')}/100 ({profile_result.get('risk_level')})")
