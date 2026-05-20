@@ -3,7 +3,7 @@
 - Image: `ghcr.io/araphik/botnethunter:main`
 - Artifact: `ghcr.io/araphik/botnethunter:main`
 - OS: `debian 12.14`
-- Created: `2026-05-20T12:09:43.97026004Z`
+- Created: `2026-05-20T13:23:57.933654842Z`
 - Total vulnerabilities: **140**
 - Reverse proxy HTML report: [https://botnethunter.duckdns.org/trivy/trivy-image-report.html](https://botnethunter.duckdns.org/trivy/trivy-image-report.html)
 
