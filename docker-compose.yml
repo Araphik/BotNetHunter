@@ -70,7 +70,7 @@ services:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-minioadmin}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-minioadmin}
       MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL:-https://botnethunter.duckdns.org/minio/}
-      MINIO_SERVER_URL: ${MINIO_SERVER_URL:-https://botnethunter.duckdns.org/minio-api}
+      MINIO_SERVER_URL: http://127.0.0.1:9000
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
