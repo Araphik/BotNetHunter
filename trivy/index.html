@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trivy image report - ghcr.io/araphik/botnethunter:main</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #0f1419;
+  --panel: #161c23;
+  --text: #e7edf3;
+  --muted: #9aa7b4;
+  --line: #2a3440;
+  --link: #6db6ff;
+  --critical: #8b1d2c;
+  --high: #c2410c;
+  --medium: #a16207;
+  --low: #2563eb;
+  --unknown: #64748b;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+main { max-width: 1280px; margin: 0 auto; padding: 28px; }
+h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: 0; }
+.meta { color: var(--muted); margin-bottom: 22px; }
+.cards {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.card {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.card strong { display: block; font-size: 28px; }
+.card span { color: var(--muted); font-size: 12px; }
+.toolbar { display: flex; gap: 10px; margin: 16px 0; }
+.toolbar input,
+.toolbar select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+}
+.toolbar input { flex: 1; min-width: 220px; }
+.table-wrap { border: 1px solid var(--line); border-radius: 8px; overflow: auto; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; min-width: 1100px; }
+th,
+td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { position: sticky; top: 0; background: #111820; text-align: left; color: #cbd5df; }
+a { color: var(--link); }
+.title { max-width: 420px; }
+.badge {
+  display: inline-block;
+  min-width: 72px;
+  text-align: center;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.critical { background: var(--critical); }
+.high { background: var(--high); }
+.medium { background: var(--medium); }
+.low { background: var(--low); }
+.unknown { background: var(--unknown); }
+.empty { color: var(--muted); }
+@media (max-width: 760px) {
+  main { padding: 16px; }
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .toolbar { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Trivy Image Report</h1>
+<div class="meta">
+  Image: <strong>ghcr.io/araphik/botnethunter:main</strong> · Artifact: ghcr.io/araphik/botnethunter:main
+  · OS: {&#x27;Family&#x27;: &#x27;debian&#x27;, &#x27;Name&#x27;: &#x27;13.5&#x27;} · Created: 2026-05-20T09:21:04.633098489Z
+  · Total vulnerabilities: <strong id="total">3</strong>
+</div>
+<div class="cards">
+<button class="card" data-filter="ALL"><strong>3</strong><span>ALL</span></button><button class="card" data-filter="CRITICAL"><strong>0</strong><span>CRITICAL</span></button><button class="card" data-filter="HIGH"><strong>3</strong><span>HIGH</span></button><button class="card" data-filter="MEDIUM"><strong>0</strong><span>MEDIUM</span></button><button class="card" data-filter="LOW"><strong>0</strong><span>LOW</span></button><button class="card" data-filter="UNKNOWN"><strong>0</strong><span>UNKNOWN</span></button>
+</div>
+<div class="toolbar">
+  <input id="q" placeholder="Search CVE, package, version, target, title">
+  <select id="severity">
+    <option value="ALL">All severities</option>
+    <option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option><option>UNKNOWN</option>
+  </select>
+</div>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>Severity</th><th>ID</th><th>Package</th><th>Installed</th><th>Fixed</th><th>Type</th><th>Title</th><th>Target</th></tr>
+</thead>
+<tbody id="tbody">
+<tr data-severity="HIGH" data-search="high cve-2026-23949 https://avd.aquasec.com/nvd/cve-2026-23949 jaraco.context 5.3.0 6.1.0 python-pkg python jaraco.context: jaraco.context: path traversal via malicious tar archives"><td><span class="badge high">HIGH</span></td><td><a href="https://avd.aquasec.com/nvd/cve-2026-23949">CVE-2026-23949</a></td><td>jaraco.context</td><td>5.3.0</td><td>6.1.0</td><td>python-pkg</td><td class="title">jaraco.context: jaraco.context: Path traversal via malicious tar archives</td><td>Python</td></tr><tr data-severity="HIGH" data-search="high cve-2026-24049 https://avd.aquasec.com/nvd/cve-2026-24049 wheel 0.45.1 0.46.2 python-pkg python wheel: wheel: privilege escalation or arbitrary code execution via malicious wheel file unpacking"><td><span class="badge high">HIGH</span></td><td><a href="https://avd.aquasec.com/nvd/cve-2026-24049">CVE-2026-24049</a></td><td>wheel</td><td>0.45.1</td><td>0.46.2</td><td>python-pkg</td><td class="title">wheel: wheel: Privilege Escalation or Arbitrary Code Execution via malicious wheel file unpacking</td><td>Python</td></tr><tr data-severity="HIGH" data-search="high cve-2026-24049 https://avd.aquasec.com/nvd/cve-2026-24049 wheel 0.45.1 0.46.2 python-pkg python wheel: wheel: privilege escalation or arbitrary code execution via malicious wheel file unpacking"><td><span class="badge high">HIGH</span></td><td><a href="https://avd.aquasec.com/nvd/cve-2026-24049">CVE-2026-24049</a></td><td>wheel</td><td>0.45.1</td><td>0.46.2</td><td>python-pkg</td><td class="title">wheel: wheel: Privilege Escalation or Arbitrary Code Execution via malicious wheel file unpacking</td><td>Python</td></tr>
+</tbody>
+</table>
+</div>
+</main>
+<script>
+const search = document.querySelector("#q");
+const severity = document.querySelector("#severity");
+const rows = Array.from(document.querySelectorAll("tbody tr"));
+function applyFilters() {
+  const query = search.value.trim().toLowerCase();
+  const selected = severity.value;
+  let visible = 0;
+  rows.forEach((row) => {
+    const matchesSeverity = selected === "ALL" || row.dataset.severity === selected;
+    const matchesQuery = query === "" || row.dataset.search.includes(query);
+    const show = matchesSeverity && matchesQuery;
+    row.style.display = show ? "" : "none";
+    if (show) visible += 1;
+  });
+  document.querySelector("#total").textContent = visible;
+}
+document.querySelectorAll(".card").forEach((button) => {
+  button.addEventListener("click", () => {
+    severity.value = button.dataset.filter;
+    applyFilters();
+  });
+});
+search.addEventListener("input", applyFilters);
+severity.addEventListener("change", applyFilters);
+</script>
+</body>
+</html>
