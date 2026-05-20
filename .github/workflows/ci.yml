@@ -276,6 +276,7 @@ jobs:
         with:
           image-ref: ${{ needs.package-job.outputs.image-ref }}
           format: table
+          output: trivy-image-report.txt
           exit-code: '0'
           ignore-unfixed: true
           vuln-type: os,library
@@ -312,9 +313,9 @@ jobs:
             echo
             echo "- Image: \`${{ needs.package-job.outputs.image-ref }}\`"
             echo "- Reverse proxy HTML report: $TRIVY_REPORT_URL"
-            echo "- GitHub-rendered report: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/trivy-reports/trivy-image-report.md"
-            echo "- HTML report file: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/trivy-reports/trivy-image-report.html"
-            echo "- Raw \`trivy-image-report.json\` is generated inside this job, but is not uploaded as an artifact to avoid GitHub artifact quota failures."
+            echo "- GitHub-rendered report: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/reports/trivy-image-report.md"
+            echo "- HTML report file: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/reports/trivy-image-report.html"
+            echo "- Raw JSON report: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/reports/trivy-image-report.json"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ ! -s trivy-image-report.json ]; then
@@ -397,7 +398,7 @@ jobs:
             ' trivy-image-report.json
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Publish Trivy report to repository branch
+      - name: Commit Trivy report to reports directory
         if: always() && github.ref_type == 'branch' && (github.ref_name == 'main' || github.ref_name == 'master') && hashFiles('trivy-image-report.html') != ''
         continue-on-error: true
         env:
@@ -411,21 +412,18 @@ jobs:
           git -C "$publish_dir" config user.name "github-actions[bot]"
           git -C "$publish_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git -C "$publish_dir" remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$publish_dir" fetch origin "$GITHUB_REF_NAME" --depth=1
+          git -C "$publish_dir" checkout -B "$GITHUB_REF_NAME" FETCH_HEAD
 
-          if git -C "$publish_dir" fetch origin trivy-reports --depth=1; then
-            git -C "$publish_dir" checkout -B trivy-reports FETCH_HEAD
-          else
-            git -C "$publish_dir" checkout --orphan trivy-reports
-          fi
+          mkdir -p "$publish_dir/reports"
+          cp trivy-image-report.txt "$publish_dir/reports/trivy-image-report.txt"
+          cp trivy-image-report.md "$publish_dir/reports/trivy-image-report.md"
+          cp trivy-image-report.html "$publish_dir/reports/trivy-image-report.html"
+          cp trivy-image-report.json "$publish_dir/reports/trivy-image-report.json"
 
-          cp trivy-image-report.md "$publish_dir/README.md"
-          cp trivy-image-report.md "$publish_dir/trivy-image-report.md"
-          cp trivy-image-report.html "$publish_dir/trivy-image-report.html"
-          cp trivy-image-report.json "$publish_dir/trivy-image-report.json"
-
-          git -C "$publish_dir" add README.md trivy-image-report.md trivy-image-report.html trivy-image-report.json
-          git -C "$publish_dir" commit -m "Publish Trivy report for ${GITHUB_SHA::7}" || exit 0
-          git -C "$publish_dir" push origin trivy-reports
+          git -C "$publish_dir" add reports/trivy-image-report.txt reports/trivy-image-report.md reports/trivy-image-report.html reports/trivy-image-report.json
+          git -C "$publish_dir" commit -m "Update Trivy report for ${GITHUB_SHA::7} [skip ci]" || exit 0
+          git -C "$publish_dir" push origin "$GITHUB_REF_NAME"
 
   release-job:
     runs-on: ubuntu-latest

@@ -85,7 +85,7 @@ Trivy HTML-отчет за reverse proxy будет доступен по адр
 https://botnethunter.duckdns.org/trivy/trivy-image-report.html
 ```
 
-nginx отдает этот файл из локальной папки `reports/`, которая монтируется в контейнер как `/usr/share/nginx/html/trivy`. Чтобы обновить опубликованный отчет на сервере, положите актуальный `trivy-image-report.html` в `reports/` и перезапустите nginx или перечитайте конфигурацию.
+nginx отдает этот файл из локальной папки `reports/`, которая монтируется в контейнер как `/usr/share/nginx/html/trivy`. GitHub Actions коммитит свежие `trivy-image-report.txt`, `trivy-image-report.html`, `trivy-image-report.md` и `trivy-image-report.json` в `reports/`, поэтому для обновления опубликованного отчета на сервере достаточно выполнить `git pull` в рабочей копии проекта.
 
 При первом входе используйте `admin` / `admin`, затем смените пароль и создайте project token для CI/CD.
 

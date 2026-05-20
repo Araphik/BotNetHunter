@@ -13,10 +13,9 @@ RUN apt-get update \
 
 COPY requirements.txt ./
 
-# Сначала явно апгрейдим pip и setuptools>=82.0.0,
-# чтобы вендорные копии wheel и jaraco.context внутри setuptools
-# были обновлены до установки остальных зависимостей (CVE-2026-24049, CVE-2026-23949)
-RUN pip install --no-cache-dir --upgrade pip "setuptools>=82.0.0" \
+# Сначала явно апгрейдим pip, setuptools и wheel,
+# чтобы Trivy не видел уязвимые Python build tools в базовом образе.
+RUN pip install --no-cache-dir --upgrade pip "setuptools>=82.0.0" "wheel>=0.46.2" \
     && pip install --no-cache-dir -r requirements.txt
 
 COPY . .

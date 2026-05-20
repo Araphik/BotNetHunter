@@ -93,19 +93,19 @@ ghcr.io/<owner>/<repo>:sha-<short-sha>
 Trivy в GitHub Actions не загружает JSON/SARIF как workflow artifact, потому что GitHub artifact storage может закончиться и заблокировать upload. Code scanning alerts тоже не используются: в личном репозитории GitHub может держать эту функцию выключенной без GitHub Advanced Security. GitHub Pages для приватного репозитория также может быть недоступен на бесплатном плане. Вместо этого отчеты можно смотреть без artifact storage, Code Scanning и Pages:
 
 - в `Actions -> CI -> container-scan-trivy-job -> Summary` - краткая Markdown-сводка с количеством уязвимостей и top findings;
-- в ветке `trivy-reports` - GitHub отрисовывает `README.md` и `trivy-image-report.md` прямо в браузере;
-- в `README.md` ветки `trivy-reports` есть ссылка на HTML-отчет за reverse proxy: `https://botnethunter.duckdns.org/trivy/trivy-image-report.html`;
-- в этой же ветке хранится `trivy-image-report.html` - интерактивный HTML-отчет с поиском, фильтрацией по severity и ссылками на CVE. Его можно скачать из GitHub и открыть локально в браузере.
+- в папке `reports/` основной ветки - GitHub хранит `trivy-image-report.txt`, `trivy-image-report.json`, `trivy-image-report.md` и интерактивный `trivy-image-report.html`;
+- после `git pull` на production-сервере reverse proxy показывает обновленный HTML-отчет: `https://botnethunter.duckdns.org/trivy/trivy-image-report.html`.
 
 Reverse proxy настроен в `nginx/nginx.conf`: путь `/trivy/` отдает статические файлы из папки `reports/`, смонтированной в nginx-контейнер. Для публикации HTML на сервере файл должен находиться по пути `reports/trivy-image-report.html`.
 
-Внутри job все еще создаются файлы:
+Внутри job создаются файлы:
 
+- `trivy-image-report.txt`;
 - `trivy-image-report.json`;
 - `trivy-image-report.md`;
 - `trivy-image-report.html`;
 
-но они используются только для summary и публикации в ветку `trivy-reports`.
+После генерации workflow коммитит эти файлы в `reports/` с сообщением `[skip ci]`, чтобы обновление отчета не запускало новый CI-круг.
 
 Если HTML-отчет на сервере будет опубликован по другому URL, задайте repository variable:
 
