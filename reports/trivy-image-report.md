@@ -3,7 +3,7 @@
 - Image: `ghcr.io/araphik/botnethunter:main`
 - Artifact: `ghcr.io/araphik/botnethunter:main`
 - OS: `alpine 3.23.4`
-- Created: `2026-05-20T16:31:21.676993884Z`
+- Created: `2026-05-20T16:42:48.362809242Z`
 - Total vulnerabilities: **0**
 - Reverse proxy HTML report: [https://botnethunter.duckdns.org/trivy/trivy-image-report.html](https://botnethunter.duckdns.org/trivy/trivy-image-report.html)
 
