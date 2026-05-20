@@ -19,7 +19,7 @@ import shutil
 from app.database import get_db, engine, Base, SessionLocal
 from app.models import (
     User, AnalysisHistory, AdminSettings, ModuleParameter, VKToken,
-    AnalyzeRequest, AnalyzeResponse, HistoryItemResponse, HistoryListResponse, APIError, Session
+    AnalyzeRequest, AnalyzeResponse, HistoryItemResponse, HistoryListResponse, APIError, Session, SharedReport
 )
 from app.auth import (
     get_password_hash, verify_password, create_access_token, decode_token, is_admin_login, generate_totp_secret,
@@ -219,14 +219,54 @@ ALLOWED_ORIGINS = [
     if o.strip()
 ]
 
-# ИНИЦИАЛИЗАЦИЯ
 app = FastAPI(
     title="BotNetHunter",
     description="Система анализа профилей ВКонтакте на наличие ботов",
     version=APP_VERSION,
     docs_url="/docs",
-    redoc_url="/redoc",
+    redoc_url="/redoc"
 )
+
+@app.exception_handler(HTTPException)
+async def custom_http_exception_handler(request: Request, exc: HTTPException):
+    """
+    Глобальный перехватчик ошибок HTTP
+    Для Web UI перенаправляет на Dashboard с сообщением об ошибке.
+    Для API возвращает стандартный JSON.
+    """
+    # Обработка ошибки 413 (Payload Too Large)
+    if exc.status_code == 413:
+        # Если запрос пришел от браузера (хочет HTML)
+        if "text/html" in request.headers.get("accept", ""):
+            return RedirectResponse(
+                url="/dashboard?error=file_too_large", 
+                status_code=303
+            )
+        # Иначе (API)
+        return JSONResponse(
+            status_code=413,
+            content={"detail": "Файл слишком большой. Максимальный размер: 100 МБ"}
+        )
+
+    # Обработка ошибки 415 (Unsupported Media Type)
+    if exc.status_code == 415:
+        if "text/html" in request.headers.get("accept", ""):
+            return RedirectResponse(
+                url="/dashboard?error=invalid_file_type", 
+                status_code=303
+            )
+        return JSONResponse(
+            status_code=415,
+            content={"detail": "Неподдерживаемый тип файла. Разрешены только изображения."}
+        )
+
+    # Для всех остальных ошибок используем стандартный обработчик
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
+
+
 Instrumentator(should_group_status_codes=False).instrument(app).expose(app)
 Base.metadata.create_all(bind=engine)
 apply_schema_migrations()
@@ -333,6 +373,42 @@ async def get_current_api_user(request: Request, db: Session = Depends(get_db), 
 
 
 # MIDDLEWARE
+
+
+@app.middleware("http")
+async def max_file_size_middleware(request: Request, call_next):
+    """
+    Middleware для проверки размера файла ДО его полной загрузки.
+    Предотвращает MemoryError и генерирует ошибку 413.
+    """
+    # Проверяем только роут загрузки аватарки
+    if request.url.path == "/account/avatar/upload" and request.method == "POST":
+        MAX_SIZE = 100 * 1024 * 1024  # 100 МБ
+        
+        try:
+            content_length = request.headers.get("content-length")
+            if content_length:
+                try:
+                    size = int(content_length)
+                    if size > MAX_SIZE:
+                        logger.warning(
+                            f"Попытка загрузки файла {size / 1024 / 1024:.2f}MB "
+                            f"(лимит {MAX_SIZE / 1024 / 1024}MB)"
+                        )
+                        # Возвращаем RedirectResponse напрямую
+                        from fastapi.responses import RedirectResponse
+                        return RedirectResponse(
+                            url="/dashboard?error=file_too_large",
+                            status_code=303
+                        )
+                except (ValueError, TypeError):
+                    # Если не удалось распарсить размер, пропускаем проверку
+                    pass
+        except Exception as e:
+            logger.error(f"Ошибка проверки размера файла: {e}")
+            # При ошибке проверки всё равно пропускаем запрос
+
+    return await call_next(request)
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
@@ -757,11 +833,31 @@ async def history_detail(request: Request, history_id: int, db: Session = Depend
     # Конвертируем время записи в московское для отображения
     record.created_at_msk = to_msk_time(record.created_at) if record.created_at else None
     
+    share_link = None
+    # Проверяем, есть ли уже активная ссылка для этого отчёта
+    existing_share = db.query(SharedReport).filter(
+        SharedReport.history_id == record.id,
+        SharedReport.expires_at == None  # только бессрочные
+    ).first()
+    
+    if existing_share:
+        share_link = f"{request.base_url}public/report/{existing_share.token}"
+    # Если нет — создаём новую автоматически
+    elif not get_admin_from_cookie(request):
+        import secrets
+        token = secrets.token_urlsafe(32)
+        new_share = SharedReport(token=token, history_id=record.id, user_id=user.id if user else 0)
+        db.add(new_share)
+        db.commit()
+        share_link = f"{request.base_url}public/report/{token}"
+    
     return templates.TemplateResponse(request, "history_detail.html", {
         "request": request,
         "user": None if get_admin_from_cookie(request) else get_user_from_cookie(request, db),
         "record": record, 
-        "details": json.loads(record.details) if record.details else {}
+        "details": json.loads(record.details) if record.details else {},
+        "share_link": share_link,
+        "is_public": False,
     })
 
 
@@ -776,6 +872,59 @@ async def change_password_page(request: Request, db: Session = Depends(get_db)):
         "error": None,
     })
 
+
+@app.post("/history/{history_id}/share", tags=["Web UI"])
+async def share_report(request: Request, history_id: int, db: Session = Depends(get_db)):
+    user = get_user_from_cookie(request, db)
+    if not user: return RedirectResponse(url="/")
+    
+    # Проверяем, что отчет принадлежит пользователю
+    record = db.query(AnalysisHistory).filter(
+        AnalysisHistory.id == history_id, 
+        AnalysisHistory.user_id == user.id
+    ).first()
+    
+    if not record:
+        raise HTTPException(status_code=404, detail="Отчет не найден")
+    
+    # Генерируем токен
+    import secrets
+    token = secrets.token_urlsafe(32)
+    
+    new_share = SharedReport(token=token, history_id=history_id, user_id=user.id)
+    db.add(new_share)
+    db.commit()
+    
+    # Формируем ссылку
+    base_url = request.base_url
+    share_link = f"{base_url}public/report/{token}"
+    
+    return RedirectResponse(url=f"/history/{history_id}?share_link={share_link}", status_code=303)
+
+@app.get("/public/report/{token}", response_class=HTMLResponse, tags=["Public"])
+async def public_report(token: str, request: Request, db: Session = Depends(get_db)):
+    # Ищем запись по токену
+    shared = db.query(SharedReport).filter(SharedReport.token == token).first()
+    
+    # Проверка срока действия
+    if shared and shared.expires_at and shared.expires_at < datetime.utcnow():
+        return templates.TemplateResponse(request, "error.html", {"message": "Ссылка устарела"})
+
+    if not shared:
+        return templates.TemplateResponse(request, "error.html", {"message": "Ссылка не найдена"})
+
+    # Загружаем сам отчет
+    record = shared.history
+    
+    # Рендерим тот же шаблон, что и в /history/, но без проверки авторизации
+    # (или урезанную версию, если нужно скрыть личные данные пользователя)
+    return templates.TemplateResponse(request, "history_detail.html", {
+        "request": request,
+        "user": None, # Гость
+        "record": record, 
+        "details": json.loads(record.details) if record.details else {},
+        "is_public": True
+    })
 
 @app.post("/account/change-password", response_class=HTMLResponse, tags=["Web UI"], include_in_schema=False)
 async def change_password(
@@ -832,6 +981,21 @@ async def upload_avatar(
     csrf_token: str = Form(...),
     db: Session = Depends(get_db)
 ):
+    
+    try:
+        content_length = request.headers.get("content-length")
+        if content_length:
+            size = int(content_length)
+            MAX_SIZE = 100 * 1024 * 1024
+            if size > MAX_SIZE:
+                logger.warning(f"Файл слишком большой: {size / 1024 / 1024:.2f}MB")
+                return RedirectResponse(
+                    url="/dashboard?error=file_too_large",
+                    status_code=303
+                )
+    except (ValueError, TypeError):
+        pass
+
     if not validate_csrf_token(request, csrf_token):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
         
