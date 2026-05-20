@@ -1,16 +1,12 @@
-FROM python:3.11-slim-trixie
+FROM python:3.11-alpine
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Обновляем системные пакеты для устранения debian-уязвимостей
-RUN apt-get update \
-    && apt-get upgrade -y --no-install-recommends \
-    && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false libncursesw6 \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
+# Обновляем базовые Alpine-пакеты и убираем неиспользуемые Python-модули.
+RUN apk upgrade --no-cache \
     && rm -f /usr/local/lib/python3.11/lib-dynload/_sqlite3*.so \
     && rm -f /usr/local/lib/python3.11/lib-dynload/_curses*.so
 
@@ -23,8 +19,8 @@ RUN pip install --no-cache-dir --upgrade pip "setuptools>=82.0.0" "wheel>=0.46.2
 
 COPY . .
 
-RUN addgroup --system appgroup \
-    && adduser --system --ingroup appgroup --no-create-home appuser \
+RUN addgroup -S appgroup \
+    && adduser -S -D -H -G appgroup appuser \
     && chown -R appuser:appgroup /app
 
 USER appuser

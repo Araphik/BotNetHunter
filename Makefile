@@ -82,7 +82,7 @@ docker-logs:
 	docker compose logs -f
 
 docker-shell:
-	docker compose exec botnethunter bash
+	docker compose exec botnethunter sh
 
 version:
 	@cat VERSION
