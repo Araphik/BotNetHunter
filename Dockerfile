@@ -1,4 +1,4 @@
-FROM python:3.11-slim-bookworm
+FROM python:3.11-slim-trixie
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -8,8 +8,11 @@ WORKDIR /app
 # Обновляем системные пакеты для устранения debian-уязвимостей
 RUN apt-get update \
     && apt-get upgrade -y --no-install-recommends \
+    && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false libncursesw6 \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /usr/local/lib/python3.11/lib-dynload/_sqlite3*.so \
+    && rm -f /usr/local/lib/python3.11/lib-dynload/_curses*.so
 
 COPY requirements.txt ./
 

@@ -1,7 +1,8 @@
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from datetime import datetime, timedelta
-from jose import jwt, JWTError
+import jwt
+from jwt import InvalidTokenError
 from config.settings import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, ADMIN_EMAIL, ADMIN_PASSWORD
 import pyotp
 
@@ -31,7 +32,7 @@ def create_access_token(data: dict) -> str:
 def decode_token_payload(token: str) -> dict | None:
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError:
+    except InvalidTokenError:
         return None
 
 
@@ -90,6 +91,5 @@ def decode_temp_2fa_token(token: str) -> dict | None:
         if payload.get("step") == "2fa_pending":
             return payload
         return None
-    except JWTError:
+    except InvalidTokenError:
         return None
-    

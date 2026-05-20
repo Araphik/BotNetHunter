@@ -82,7 +82,7 @@ BotNetHunter - веб-приложение для анализа профиле�
 | python-multipart | `>=0.0.6` |
 | aiofiles | `>=23.2.1` |
 | passlib[bcrypt] | `>=1.7.4` |
-| python-jose[cryptography] | `>=3.3.0` |
+| PyJWT | `>=2.10.1` |
 | argon2-cffi | `>=23.1.0` |
 | httpx | `>=0.25.0` |
 | psutil | `>=5.9.0` |
