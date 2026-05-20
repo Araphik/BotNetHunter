@@ -2,9 +2,9 @@
 
 - Image: `ghcr.io/araphik/botnethunter:main`
 - Artifact: `ghcr.io/araphik/botnethunter:main`
-- OS: `debian 13.5`
-- Created: `2026-05-20T14:36:35.962080809Z`
-- Total vulnerabilities: **94**
+- OS: `alpine 3.23.4`
+- Created: `2026-05-20T14:48:41.010929993Z`
+- Total vulnerabilities: **0**
 - Reverse proxy HTML report: [https://botnethunter.duckdns.org/trivy/trivy-image-report.html](https://botnethunter.duckdns.org/trivy/trivy-image-report.html)
 
 ## Summary
@@ -12,107 +12,12 @@
 | Severity | Count |
 | --- | ---: |
 | CRITICAL | 0 |
-| HIGH | 3 |
-| MEDIUM | 29 |
-| LOW | 62 |
+| HIGH | 0 |
+| MEDIUM | 0 |
+| LOW | 0 |
 | UNKNOWN | 0 |
-| **TOTAL** | **94** |
+| **TOTAL** | **0** |
 
 ## Findings
 
-| Severity | ID | Package | Installed | Fixed | Type | Target | Title |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| HIGH | [CVE-2025-69720](https://avd.aquasec.com/nvd/cve-2025-69720) | libtinfo6 | 6.5+20250216-2 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | ncurses: ncurses: Buffer overflow vulnerability may lead to arbitrary code execution. |
-| HIGH | [CVE-2025-69720](https://avd.aquasec.com/nvd/cve-2025-69720) | ncurses-base | 6.5+20250216-2 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | ncurses: ncurses: Buffer overflow vulnerability may lead to arbitrary code execution. |
-| HIGH | [CVE-2025-69720](https://avd.aquasec.com/nvd/cve-2025-69720) | ncurses-bin | 6.5+20250216-2 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | ncurses: ncurses: Buffer overflow vulnerability may lead to arbitrary code execution. |
-| MEDIUM | [CVE-2026-27171](https://avd.aquasec.com/nvd/cve-2026-27171) | zlib1g | 1:1.3.dfsg+really1.3.1-1+b1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | zlib: zlib: Denial of Service via infinite loop in CRC32 combine functions |
-| MEDIUM | [CVE-2026-27456](https://avd.aquasec.com/nvd/cve-2026-27456) | bsdutils | 1:2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: TOCTOU in the mount program when setting up loop devices |
-| MEDIUM | [CVE-2026-27456](https://avd.aquasec.com/nvd/cve-2026-27456) | libblkid1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: TOCTOU in the mount program when setting up loop devices |
-| MEDIUM | [CVE-2026-27456](https://avd.aquasec.com/nvd/cve-2026-27456) | liblastlog2-2 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: TOCTOU in the mount program when setting up loop devices |
-| MEDIUM | [CVE-2026-27456](https://avd.aquasec.com/nvd/cve-2026-27456) | libmount1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: TOCTOU in the mount program when setting up loop devices |
-| MEDIUM | [CVE-2026-27456](https://avd.aquasec.com/nvd/cve-2026-27456) | libsmartcols1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: TOCTOU in the mount program when setting up loop devices |
-| MEDIUM | [CVE-2026-27456](https://avd.aquasec.com/nvd/cve-2026-27456) | libuuid1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: TOCTOU in the mount program when setting up loop devices |
-| MEDIUM | [CVE-2026-27456](https://avd.aquasec.com/nvd/cve-2026-27456) | login | 1:4.16.0-2+really2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: TOCTOU in the mount program when setting up loop devices |
-| MEDIUM | [CVE-2026-27456](https://avd.aquasec.com/nvd/cve-2026-27456) | mount | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: TOCTOU in the mount program when setting up loop devices |
-| MEDIUM | [CVE-2026-27456](https://avd.aquasec.com/nvd/cve-2026-27456) | util-linux | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: TOCTOU in the mount program when setting up loop devices |
-| MEDIUM | [CVE-2026-3184](https://avd.aquasec.com/nvd/cve-2026-3184) | bsdutils | 1:2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Access control bypass due to improper hostname canonicalization |
-| MEDIUM | [CVE-2026-3184](https://avd.aquasec.com/nvd/cve-2026-3184) | libblkid1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Access control bypass due to improper hostname canonicalization |
-| MEDIUM | [CVE-2026-3184](https://avd.aquasec.com/nvd/cve-2026-3184) | liblastlog2-2 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Access control bypass due to improper hostname canonicalization |
-| MEDIUM | [CVE-2026-3184](https://avd.aquasec.com/nvd/cve-2026-3184) | libmount1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Access control bypass due to improper hostname canonicalization |
-| MEDIUM | [CVE-2026-3184](https://avd.aquasec.com/nvd/cve-2026-3184) | libsmartcols1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Access control bypass due to improper hostname canonicalization |
-| MEDIUM | [CVE-2026-3184](https://avd.aquasec.com/nvd/cve-2026-3184) | libuuid1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Access control bypass due to improper hostname canonicalization |
-| MEDIUM | [CVE-2026-3184](https://avd.aquasec.com/nvd/cve-2026-3184) | login | 1:4.16.0-2+really2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Access control bypass due to improper hostname canonicalization |
-| MEDIUM | [CVE-2026-3184](https://avd.aquasec.com/nvd/cve-2026-3184) | mount | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Access control bypass due to improper hostname canonicalization |
-| MEDIUM | [CVE-2026-3184](https://avd.aquasec.com/nvd/cve-2026-3184) | util-linux | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Access control bypass due to improper hostname canonicalization |
-| MEDIUM | [CVE-2026-34743](https://avd.aquasec.com/nvd/cve-2026-34743) | liblzma5 | 5.8.1-1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | xz: XZ Utils: Denial of Service via buffer overflow in index decoding |
-| MEDIUM | [CVE-2026-5435](https://avd.aquasec.com/nvd/cve-2026-5435) | libc-bin | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: glibc: Out-of-bounds write via TSIG record processing |
-| MEDIUM | [CVE-2026-5435](https://avd.aquasec.com/nvd/cve-2026-5435) | libc6 | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: glibc: Out-of-bounds write via TSIG record processing |
-| MEDIUM | [CVE-2026-5450](https://avd.aquasec.com/nvd/cve-2026-5450) | libc-bin | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: glibc: Heap Buffer Overflow in `scanf` with `%mc` format specifier and large width |
-| MEDIUM | [CVE-2026-5450](https://avd.aquasec.com/nvd/cve-2026-5450) | libc6 | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: glibc: Heap Buffer Overflow in `scanf` with `%mc` format specifier and large width |
-| MEDIUM | [CVE-2026-5704](https://avd.aquasec.com/nvd/cve-2026-5704) | tar | 1.35+dfsg-3.1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | tar: tar: Hidden file injection via crafted archives |
-| MEDIUM | [CVE-2026-5928](https://avd.aquasec.com/nvd/cve-2026-5928) | libc-bin | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: glibc: Information disclosure or denial of service via ungetwc function with specific wide character encodings |
-| MEDIUM | [CVE-2026-5928](https://avd.aquasec.com/nvd/cve-2026-5928) | libc6 | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: glibc: Information disclosure or denial of service via ungetwc function with specific wide character encodings |
-| MEDIUM | [CVE-2026-6238](https://avd.aquasec.com/nvd/cve-2026-6238) | libc-bin | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: glibc: Application crash or uninitialized memory read via crafted DNS response |
-| MEDIUM | [CVE-2026-6238](https://avd.aquasec.com/nvd/cve-2026-6238) | libc6 | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: glibc: Application crash or uninitialized memory read via crafted DNS response |
-| LOW | [CVE-2005-2541](https://avd.aquasec.com/nvd/cve-2005-2541) | tar | 1.35+dfsg-3.1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | tar: does not properly warn the user when extracting setuid or setgid files |
-| LOW | [CVE-2007-5686](https://avd.aquasec.com/nvd/cve-2007-5686) | login.defs | 1:4.17.4-2 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | initscripts in rPath Linux 1 sets insecure permissions for the /var/lo ... |
-| LOW | [CVE-2007-5686](https://avd.aquasec.com/nvd/cve-2007-5686) | passwd | 1:4.17.4-2 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | initscripts in rPath Linux 1 sets insecure permissions for the /var/lo ... |
-| LOW | [CVE-2010-4756](https://avd.aquasec.com/nvd/cve-2010-4756) | libc-bin | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: glob implementation can cause excessive CPU and memory consumption due to crafted glob expressions |
-| LOW | [CVE-2010-4756](https://avd.aquasec.com/nvd/cve-2010-4756) | libc6 | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: glob implementation can cause excessive CPU and memory consumption due to crafted glob expressions |
-| LOW | [CVE-2011-3374](https://avd.aquasec.com/nvd/cve-2011-3374) | apt | 3.0.3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | It was found that apt-key in apt, all versions, do not correctly valid ... |
-| LOW | [CVE-2011-3374](https://avd.aquasec.com/nvd/cve-2011-3374) | libapt-pkg7.0 | 3.0.3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | It was found that apt-key in apt, all versions, do not correctly valid ... |
-| LOW | [CVE-2011-4116](https://avd.aquasec.com/nvd/cve-2011-4116) | perl-base | 5.40.1-6 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | perl: File:: Temp insecure temporary file handling |
-| LOW | [CVE-2013-4392](https://avd.aquasec.com/nvd/cve-2013-4392) | libsystemd0 | 257.13-1~deb13u1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | systemd: TOCTOU race condition when updating file permissions and SELinux security contexts |
-| LOW | [CVE-2013-4392](https://avd.aquasec.com/nvd/cve-2013-4392) | libudev1 | 257.13-1~deb13u1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | systemd: TOCTOU race condition when updating file permissions and SELinux security contexts |
-| LOW | [CVE-2017-18018](https://avd.aquasec.com/nvd/cve-2017-18018) | coreutils | 9.7-3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | coreutils: race condition vulnerability in chown and chgrp |
-| LOW | [CVE-2018-20796](https://avd.aquasec.com/nvd/cve-2018-20796) | libc-bin | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: uncontrolled recursion in function check_dst_limits_calc_pos_1 in posix/regexec.c |
-| LOW | [CVE-2018-20796](https://avd.aquasec.com/nvd/cve-2018-20796) | libc6 | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: uncontrolled recursion in function check_dst_limits_calc_pos_1 in posix/regexec.c |
-| LOW | [CVE-2019-1010022](https://avd.aquasec.com/nvd/cve-2019-1010022) | libc-bin | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: stack guard protection bypass |
-| LOW | [CVE-2019-1010022](https://avd.aquasec.com/nvd/cve-2019-1010022) | libc6 | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: stack guard protection bypass |
-| LOW | [CVE-2019-1010023](https://avd.aquasec.com/nvd/cve-2019-1010023) | libc-bin | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: running ldd on malicious ELF leads to code execution because of wrong size computation |
-| LOW | [CVE-2019-1010023](https://avd.aquasec.com/nvd/cve-2019-1010023) | libc6 | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: running ldd on malicious ELF leads to code execution because of wrong size computation |
-| LOW | [CVE-2019-1010024](https://avd.aquasec.com/nvd/cve-2019-1010024) | libc-bin | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: ASLR bypass using cache of thread stack and heap |
-| LOW | [CVE-2019-1010024](https://avd.aquasec.com/nvd/cve-2019-1010024) | libc6 | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: ASLR bypass using cache of thread stack and heap |
-| LOW | [CVE-2019-1010025](https://avd.aquasec.com/nvd/cve-2019-1010025) | libc-bin | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: information disclosure of heap addresses of pthread_created thread |
-| LOW | [CVE-2019-1010025](https://avd.aquasec.com/nvd/cve-2019-1010025) | libc6 | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: information disclosure of heap addresses of pthread_created thread |
-| LOW | [CVE-2019-9192](https://avd.aquasec.com/nvd/cve-2019-9192) | libc-bin | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: uncontrolled recursion in function check_dst_limits_calc_pos_1 in posix/regexec.c |
-| LOW | [CVE-2019-9192](https://avd.aquasec.com/nvd/cve-2019-9192) | libc6 | 2.41-12+deb13u3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | glibc: uncontrolled recursion in function check_dst_limits_calc_pos_1 in posix/regexec.c |
-| LOW | [CVE-2021-45346](https://avd.aquasec.com/nvd/cve-2021-45346) | libsqlite3-0 | 3.46.1-7+deb13u1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | sqlite: crafted SQL query allows a malicious user to obtain sensitive information |
-| LOW | [CVE-2022-0563](https://avd.aquasec.com/nvd/cve-2022-0563) | bsdutils | 1:2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: partial disclosure of arbitrary files in chfn and chsh when compiled with libreadline |
-| LOW | [CVE-2022-0563](https://avd.aquasec.com/nvd/cve-2022-0563) | libblkid1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: partial disclosure of arbitrary files in chfn and chsh when compiled with libreadline |
-| LOW | [CVE-2022-0563](https://avd.aquasec.com/nvd/cve-2022-0563) | liblastlog2-2 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: partial disclosure of arbitrary files in chfn and chsh when compiled with libreadline |
-| LOW | [CVE-2022-0563](https://avd.aquasec.com/nvd/cve-2022-0563) | libmount1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: partial disclosure of arbitrary files in chfn and chsh when compiled with libreadline |
-| LOW | [CVE-2022-0563](https://avd.aquasec.com/nvd/cve-2022-0563) | libsmartcols1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: partial disclosure of arbitrary files in chfn and chsh when compiled with libreadline |
-| LOW | [CVE-2022-0563](https://avd.aquasec.com/nvd/cve-2022-0563) | libuuid1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: partial disclosure of arbitrary files in chfn and chsh when compiled with libreadline |
-| LOW | [CVE-2022-0563](https://avd.aquasec.com/nvd/cve-2022-0563) | login | 1:4.16.0-2+really2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: partial disclosure of arbitrary files in chfn and chsh when compiled with libreadline |
-| LOW | [CVE-2022-0563](https://avd.aquasec.com/nvd/cve-2022-0563) | mount | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: partial disclosure of arbitrary files in chfn and chsh when compiled with libreadline |
-| LOW | [CVE-2022-0563](https://avd.aquasec.com/nvd/cve-2022-0563) | util-linux | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: partial disclosure of arbitrary files in chfn and chsh when compiled with libreadline |
-| LOW | [CVE-2023-31437](https://avd.aquasec.com/nvd/cve-2023-31437) | libsystemd0 | 257.13-1~deb13u1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | An issue was discovered in systemd 253. An attacker can modify a seale ... |
-| LOW | [CVE-2023-31437](https://avd.aquasec.com/nvd/cve-2023-31437) | libudev1 | 257.13-1~deb13u1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | An issue was discovered in systemd 253. An attacker can modify a seale ... |
-| LOW | [CVE-2023-31438](https://avd.aquasec.com/nvd/cve-2023-31438) | libsystemd0 | 257.13-1~deb13u1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | An issue was discovered in systemd 253. An attacker can truncate a sea ... |
-| LOW | [CVE-2023-31438](https://avd.aquasec.com/nvd/cve-2023-31438) | libudev1 | 257.13-1~deb13u1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | An issue was discovered in systemd 253. An attacker can truncate a sea ... |
-| LOW | [CVE-2023-31439](https://avd.aquasec.com/nvd/cve-2023-31439) | libsystemd0 | 257.13-1~deb13u1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | An issue was discovered in systemd 253. An attacker can modify the con ... |
-| LOW | [CVE-2023-31439](https://avd.aquasec.com/nvd/cve-2023-31439) | libudev1 | 257.13-1~deb13u1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | An issue was discovered in systemd 253. An attacker can modify the con ... |
-| LOW | [CVE-2024-56433](https://avd.aquasec.com/nvd/cve-2024-56433) | login.defs | 1:4.17.4-2 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | shadow-utils: Default subordinate ID configuration in /etc/login.defs could lead to compromise |
-| LOW | [CVE-2024-56433](https://avd.aquasec.com/nvd/cve-2024-56433) | passwd | 1:4.17.4-2 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | shadow-utils: Default subordinate ID configuration in /etc/login.defs could lead to compromise |
-| LOW | [CVE-2025-14104](https://avd.aquasec.com/nvd/cve-2025-14104) | bsdutils | 1:2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Heap buffer overread in setpwnam() when processing 256-byte usernames |
-| LOW | [CVE-2025-14104](https://avd.aquasec.com/nvd/cve-2025-14104) | libblkid1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Heap buffer overread in setpwnam() when processing 256-byte usernames |
-| LOW | [CVE-2025-14104](https://avd.aquasec.com/nvd/cve-2025-14104) | liblastlog2-2 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Heap buffer overread in setpwnam() when processing 256-byte usernames |
-| LOW | [CVE-2025-14104](https://avd.aquasec.com/nvd/cve-2025-14104) | libmount1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Heap buffer overread in setpwnam() when processing 256-byte usernames |
-| LOW | [CVE-2025-14104](https://avd.aquasec.com/nvd/cve-2025-14104) | libsmartcols1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Heap buffer overread in setpwnam() when processing 256-byte usernames |
-| LOW | [CVE-2025-14104](https://avd.aquasec.com/nvd/cve-2025-14104) | libuuid1 | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Heap buffer overread in setpwnam() when processing 256-byte usernames |
-| LOW | [CVE-2025-14104](https://avd.aquasec.com/nvd/cve-2025-14104) | login | 1:4.16.0-2+really2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Heap buffer overread in setpwnam() when processing 256-byte usernames |
-| LOW | [CVE-2025-14104](https://avd.aquasec.com/nvd/cve-2025-14104) | mount | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Heap buffer overread in setpwnam() when processing 256-byte usernames |
-| LOW | [CVE-2025-14104](https://avd.aquasec.com/nvd/cve-2025-14104) | util-linux | 2.41-5 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | util-linux: util-linux: Heap buffer overread in setpwnam() when processing 256-byte usernames |
-| LOW | [CVE-2025-5278](https://avd.aquasec.com/nvd/cve-2025-5278) | coreutils | 9.7-3 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | coreutils: Heap Buffer Under-Read in GNU Coreutils sort via Key Specification |
-| LOW | [CVE-2025-6141](https://avd.aquasec.com/nvd/cve-2025-6141) | libtinfo6 | 6.5+20250216-2 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | gnu-ncurses: ncurses Stack Buffer Overflow |
-| LOW | [CVE-2025-6141](https://avd.aquasec.com/nvd/cve-2025-6141) | ncurses-base | 6.5+20250216-2 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | gnu-ncurses: ncurses Stack Buffer Overflow |
-| LOW | [CVE-2025-6141](https://avd.aquasec.com/nvd/cve-2025-6141) | ncurses-bin | 6.5+20250216-2 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | gnu-ncurses: ncurses Stack Buffer Overflow |
-| LOW | [CVE-2025-70873](https://avd.aquasec.com/nvd/cve-2025-70873) | libsqlite3-0 | 3.46.1-7+deb13u1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | sqlite: SQLite: Information Disclosure via Crafted ZIP File |
-| LOW | [CVE-2026-40228](https://avd.aquasec.com/nvd/cve-2026-40228) | libsystemd0 | 257.13-1~deb13u1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | systemd: systemd-journald: Unintended output to user terminals via logger command |
-| LOW | [CVE-2026-40228](https://avd.aquasec.com/nvd/cve-2026-40228) | libudev1 | 257.13-1~deb13u1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | systemd: systemd-journald: Unintended output to user terminals via logger command |
-| LOW | [TEMP-0290435-0B57B5](https://security-tracker.debian.org/tracker/TEMP-0290435-0B57B5) | tar | 1.35+dfsg-3.1 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | [tar's rmt command may have undesired side effects] |
-| LOW | [TEMP-0517018-A83CE6](https://security-tracker.debian.org/tracker/TEMP-0517018-A83CE6) | sysvinit-utils | 3.14-4 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | [sysvinit: no-root option in expert installer exposes locally exploitable security flaw] |
-| LOW | [TEMP-0628843-DBAD28](https://security-tracker.debian.org/tracker/TEMP-0628843-DBAD28) | login.defs | 1:4.17.4-2 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | [more related to CVE-2005-4890] |
-| LOW | [TEMP-0628843-DBAD28](https://security-tracker.debian.org/tracker/TEMP-0628843-DBAD28) | passwd | 1:4.17.4-2 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | [more related to CVE-2005-4890] |
-| LOW | [TEMP-0841856-B18BAF](https://security-tracker.debian.org/tracker/TEMP-0841856-B18BAF) | bash | 5.2.37-2+b9 | no fix | debian | ghcr.io/araphik/botnethunter:main (debian 13.5) | [Privilege escalation possible to other user than root] |
+No vulnerabilities found.
