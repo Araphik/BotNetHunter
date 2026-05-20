@@ -94,7 +94,10 @@ Trivy в GitHub Actions не загружает JSON/SARIF как workflow artif
 
 - в `Actions -> CI -> container-scan-trivy-job -> Summary` - краткая Markdown-сводка с количеством уязвимостей и top findings;
 - в ветке `trivy-reports` - GitHub отрисовывает `README.md` и `trivy-image-report.md` прямо в браузере;
+- в `README.md` ветки `trivy-reports` есть ссылка на HTML-отчет за reverse proxy: `https://botnethunter.duckdns.org/trivy/trivy-image-report.html`;
 - в этой же ветке хранится `trivy-image-report.html` - интерактивный HTML-отчет с поиском, фильтрацией по severity и ссылками на CVE. Его можно скачать из GitHub и открыть локально в браузере.
+
+Reverse proxy настроен в `nginx/nginx.conf`: путь `/trivy/` отдает статические файлы из папки `reports/`, смонтированной в nginx-контейнер. Для публикации HTML на сервере файл должен находиться по пути `reports/trivy-image-report.html`.
 
 Внутри job все еще создаются файлы:
 
@@ -103,6 +106,13 @@ Trivy в GitHub Actions не загружает JSON/SARIF как workflow artif
 - `trivy-image-report.html`;
 
 но они используются только для summary и публикации в ветку `trivy-reports`.
+
+Если HTML-отчет на сервере будет опубликован по другому URL, задайте repository variable:
+
+```text
+Settings -> Secrets and variables -> Actions -> Variables
+TRIVY_REPORT_URL=https://botnethunter.duckdns.org/trivy/trivy-image-report.html
+```
 
 SonarQube сохраняет:
 

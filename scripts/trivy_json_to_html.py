@@ -24,6 +24,20 @@ def escape(value: object, fallback: str = "n/a") -> str:
     return html.escape(text(value, fallback), quote=True)
 
 
+def os_label(metadata: dict) -> str:
+    os_info = metadata.get("OS")
+    if isinstance(os_info, dict):
+        return " ".join(
+            part
+            for part in [
+                text(os_info.get("Family"), ""),
+                text(os_info.get("Name"), ""),
+            ]
+            if part
+        ) or "n/a"
+    return text(os_info, "n/a")
+
+
 def load_findings(report: dict) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
     for result in report.get("Results") or []:
@@ -62,7 +76,7 @@ def render_report(report: dict, findings: list[dict[str, str]], image_ref: str) 
     total = len(findings)
     created_at = text(report.get("CreatedAt"))
     artifact_name = text(report.get("ArtifactName"), image_ref)
-    os_name = text((report.get("Metadata") or {}).get("OS"), "n/a")
+    os_name = os_label(report.get("Metadata") or {})
 
     cards = [
         f'<button class="card" data-filter="ALL"><strong>{total}</strong><span>ALL</span></button>'
@@ -259,11 +273,16 @@ def markdown_cell(value: object, fallback: str = "n/a") -> str:
     )
 
 
-def render_markdown(report: dict, findings: list[dict[str, str]], image_ref: str) -> str:
+def render_markdown(
+    report: dict,
+    findings: list[dict[str, str]],
+    image_ref: str,
+    public_html_url: str | None = None,
+) -> str:
     counts = Counter(item["severity"] for item in findings)
     created_at = text(report.get("CreatedAt"))
     artifact_name = text(report.get("ArtifactName"), image_ref)
-    os_name = text((report.get("Metadata") or {}).get("OS"), "n/a")
+    os_name = os_label(report.get("Metadata") or {})
 
     lines = [
         "# Trivy Image Report",
@@ -273,12 +292,20 @@ def render_markdown(report: dict, findings: list[dict[str, str]], image_ref: str
         f"- OS: `{os_name}`",
         f"- Created: `{created_at}`",
         f"- Total vulnerabilities: **{len(findings)}**",
-        "",
-        "## Summary",
-        "",
-        "| Severity | Count |",
-        "| --- | ---: |",
     ]
+    if public_html_url:
+        lines.append(
+            f"- Reverse proxy HTML report: [{public_html_url}]({public_html_url})"
+        )
+    lines.extend(
+        [
+            "",
+            "## Summary",
+            "",
+            "| Severity | Count |",
+            "| --- | ---: |",
+        ]
+    )
     for severity in SEVERITIES:
         lines.append(f"| {severity} | {counts[severity]} |")
     lines.extend(
@@ -331,6 +358,7 @@ def main() -> None:
     parser.add_argument("output", type=Path)
     parser.add_argument("--image-ref", default="unknown")
     parser.add_argument("--markdown-output", type=Path)
+    parser.add_argument("--public-html-url")
     args = parser.parse_args()
 
     with args.input.open(encoding="utf-8") as file:
@@ -343,7 +371,7 @@ def main() -> None:
     )
     if args.markdown_output:
         args.markdown_output.write_text(
-            render_markdown(report, findings, args.image_ref),
+            render_markdown(report, findings, args.image_ref, args.public_html_url),
             encoding="utf-8",
         )
 

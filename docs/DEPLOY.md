@@ -79,6 +79,14 @@ SonarQube будет доступен по адресу:
 https://botnethunter.duckdns.org/sonar/
 ```
 
+Trivy HTML-отчет за reverse proxy будет доступен по адресу:
+
+```text
+https://botnethunter.duckdns.org/trivy/trivy-image-report.html
+```
+
+nginx отдает этот файл из локальной папки `reports/`, которая монтируется в контейнер как `/usr/share/nginx/html/trivy`. Чтобы обновить опубликованный отчет на сервере, положите актуальный `trivy-image-report.html` в `reports/` и перезапустите nginx или перечитайте конфигурацию.
+
 При первом входе используйте `admin` / `admin`, затем смените пароль и создайте project token для CI/CD.
 
 > **Примечание для Linux-хоста:** SonarQube использует Elasticsearch. Если контейнер `sonarqube` не стартует, задайте на хосте `sudo sysctl -w vm.max_map_count=524288` и добавьте `vm.max_map_count=524288` в `/etc/sysctl.conf`.

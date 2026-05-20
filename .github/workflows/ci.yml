@@ -258,6 +258,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ package-job ]
     if: github.event_name == 'push'
+    env:
+      TRIVY_REPORT_URL: ${{ vars.TRIVY_REPORT_URL || 'https://botnethunter.duckdns.org/trivy/trivy-image-report.html' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -297,7 +299,8 @@ jobs:
               trivy-image-report.json \
               trivy-image-report.html \
               --image-ref "${{ needs.package-job.outputs.image-ref }}" \
-              --markdown-output trivy-image-report.md
+              --markdown-output trivy-image-report.md \
+              --public-html-url "$TRIVY_REPORT_URL"
           fi
 
       - name: Publish Trivy report summary
@@ -308,6 +311,7 @@ jobs:
             echo "## Trivy container scan"
             echo
             echo "- Image: \`${{ needs.package-job.outputs.image-ref }}\`"
+            echo "- Reverse proxy HTML report: $TRIVY_REPORT_URL"
             echo "- GitHub-rendered report: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/trivy-reports/trivy-image-report.md"
             echo "- HTML report file: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/trivy-reports/trivy-image-report.html"
             echo "- Raw \`trivy-image-report.json\` is generated inside this job, but is not uploaded as an artifact to avoid GitHub artifact quota failures."
