@@ -101,8 +101,6 @@ class ModuleParameter(Base):
     param_value = Column(Integer, nullable=False)
     description = Column(String(255), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    __table_args__ = ({"sqlite_autoincrement": True},)
 
     def __repr__(self):
         return f"<ModuleParameter(module='{self.module_name}', key='{self.param_key}', value={self.param_value})>"
