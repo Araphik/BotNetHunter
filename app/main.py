@@ -214,7 +214,7 @@ app = FastAPI(
     description="Система анализа профилей ВКонтакте на наличие ботов",
     version=APP_VERSION,
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 Instrumentator(should_group_status_codes=False).instrument(app).expose(app)
 Base.metadata.create_all(bind=engine)
@@ -225,6 +225,8 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 AVATAR_DIR = os.getenv("AVATAR_STORAGE_DIR") or "/tmp/avatars"
 Path(AVATAR_DIR).mkdir(parents=True, exist_ok=True)
 app.mount("/avatars", StaticFiles(directory=AVATAR_DIR), name="avatars")
+
+
 
 # Отключаем дублирующие логи от uvicorn
 logging.getLogger("uvicorn.access").disabled = True
@@ -826,6 +828,23 @@ async def upload_avatar(
     if not user:
         return RedirectResponse(url="/")
 
+    MAX_AVATAR_SIZE = 100 * 1024 * 1024  # 100MB
+    
+    # Проверяем размер файла ЧЕРЕЗ Content-Length header ДО чтения
+    content_length = request.headers.get("content-length")
+    if content_length:
+        # Вычитаем размер других полей формы (примерно 1-2KB)
+        estimated_file_size = int(content_length) - 2048
+        if estimated_file_size > MAX_AVATAR_SIZE:
+            logger.warning(
+                f"Пользователь {user.email} попытался загрузить файл "
+                f"размером {estimated_file_size / 1024 / 1024:.2f}MB (лимит {MAX_AVATAR_SIZE / 1024 / 1024}MB)"
+            )
+            return RedirectResponse(
+                url="/dashboard?error=file_too_large",
+                status_code=303
+            )
+
     # Базовая проверка типа файла
     if not file.content_type or not file.content_type.startswith("image/"):
         return RedirectResponse(url="/dashboard?error=invalid_file_type", status_code=303)
@@ -843,9 +862,35 @@ async def upload_avatar(
     unique_name = f"avatar_{user.id}_{uuid.uuid4().hex}{ext}"
     file_path = avatar_path / unique_name
 
-    # Сохраняем файл (streaming)
-    with file_path.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    try:
+        # Сохраняем файл потоково с проверкой размера
+        total_size = 0
+        with file_path.open("wb") as buffer:
+            while True:
+                chunk = await file.read(1024 * 1024)  # Читаем по 1MB
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                
+                # Проверяем лимит во время загрузки
+                if total_size > MAX_AVATAR_SIZE:
+                    buffer.close()
+                    file_path.unlink(missing_ok=True)
+                    logger.warning(
+                        f"Файл {unique_name} превысил лимит: {total_size / 1024 / 1024:.2f}MB"
+                    )
+                    return RedirectResponse(
+                        url="/dashboard?error=file_too_large",
+                        status_code=303
+                    )
+                
+                buffer.write(chunk)
+                
+    except Exception as e:
+        logger.error(f"Ошибка сохранения аватара: {e}")
+        if file_path.exists():
+            file_path.unlink(missing_ok=True)
+        return RedirectResponse(url="/dashboard?error=upload_failed", status_code=303)
 
     # Удаляем старую аватарку, если она была
     old_avatar = user.avatar_path
@@ -861,6 +906,10 @@ async def upload_avatar(
     user.avatar_path = unique_name
     db.commit()
 
+    logger.info(
+        f"Пользователь {user.email} загрузил аватар {unique_name} "
+        f"({total_size / 1024 / 1024:.2f}MB)"
+    )
     return RedirectResponse(url="/dashboard?avatar_updated=1", status_code=303)
 
 # REST API 

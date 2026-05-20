@@ -168,7 +168,7 @@
                 <!-- Блок аватарки -->
                 <div class="d-flex align-items-center gap-3 mb-3 pb-3 border-bottom">
                     {% if avatar_url %}
-                        <img src="{{ avatar_url }}" alt="Аватар" class="rounded-circle" width="80" height="80" style="object-fit: cover; border: 2px solid #dee2e6; background: #fff;">
+                        <img src="{{ avatar_url }}" alt="Аватар" class="rounded-circle" width="80" height="80" style="object-fit: cover; border: 2px solid #dee2e6; background: #fff;" onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22%3E%3Crect fill=%22%236c757d%22 width=%2280%22 height=%2280%22/%3E%3Ctext fill=%22%23fff%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 font-size=%2228%22%3E{{ user.email[0]|upper }}%3C/text%3E%3C/svg%3E';">
                     {% else %}
                         <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center text-white fw-bold" style="width: 80px; height: 80px; font-size: 28px; background: linear-gradient(135deg, #6c757d, #495057);">
                             {{ user.email[0]|upper }}
@@ -184,7 +184,13 @@
                             </div>
                         </form>
                         {% if request.query_params.get('error') == 'invalid_file_type' %}
-                            <small class="text-danger mt-1 d-block">Ошибка загрузки</small>
+                            <small class="text-danger mt-1 d-block">Ошибка: Разрешены только изображения.</small>
+                        {% elif request.query_params.get('error') == 'file_too_large' %}
+                            <small class="text-danger mt-1 d-block">Ошибка: Файл слишком большой. Максимальный размер: 100MB.</small>
+                        {% elif request.query_params.get('error') == 'empty_file' %}
+                            <small class="text-danger mt-1 d-block">Ошибка: Пустой файл.</small>
+                        {% elif request.query_params.get('error') == 'upload_failed' %}
+                            <small class="text-danger mt-1 d-block">Ошибка загрузки файла.</small>
                         {% elif request.query_params.get('avatar_updated') == '1' %}
                             <small class="text-success mt-1 d-block">Аватар успешно обновлен!</small>
                         {% endif %}
