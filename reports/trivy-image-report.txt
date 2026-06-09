@@ -21,9 +21,9 @@ Report Summary
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/bcrypt-5.0.0.dist-info/METADATA           │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.11/site-packages/boto3-1.43.12.dist-info/METADATA          │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.11/site-packages/boto3-1.43.25.dist-info/METADATA          │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.11/site-packages/botocore-1.43.12.dist-info/METADATA       │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.11/site-packages/botocore-1.43.25.dist-info/METADATA       │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/certifi-2026.5.20.dist-info/METADATA      │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
@@ -32,9 +32,9 @@ Report Summary
 │ usr/local/lib/python3.11/site-packages/charset_normalizer-3.4.7.dist-info/METAD- │ python-pkg │        0        │    -    │
 │ ATA                                                                              │            │                 │         │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.11/site-packages/click-8.4.0.dist-info/METADATA            │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.11/site-packages/click-8.4.1.dist-info/METADATA            │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.11/site-packages/fastapi-0.136.1.dist-info/METADATA        │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.11/site-packages/fastapi-0.136.3.dist-info/METADATA        │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/greenlet-3.5.1.dist-info/METADATA         │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
@@ -44,7 +44,7 @@ Report Summary
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/httpx-0.28.1.dist-info/METADATA           │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.11/site-packages/idna-3.15.dist-info/METADATA              │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.11/site-packages/idna-3.18.dist-info/METADATA              │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/jinja2-3.1.6.dist-info/METADATA           │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
@@ -56,7 +56,7 @@ Report Summary
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/passlib-1.7.4.dist-info/METADATA          │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.11/site-packages/pip-26.1.1.dist-info/METADATA             │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.11/site-packages/pip-26.1.2.dist-info/METADATA             │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/prometheus_client-0.25.0.dist-info/METAD- │ python-pkg │        0        │    -    │
 │ ATA                                                                              │            │                 │         │
@@ -76,7 +76,7 @@ Report Summary
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/pydantic_core-2.46.4.dist-info/METADATA   │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.11/site-packages/pyjwt-2.12.1.dist-info/METADATA           │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.11/site-packages/pyjwt-2.13.0.dist-info/METADATA           │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/pyotp-2.9.0.dist-info/METADATA            │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
@@ -85,12 +85,12 @@ Report Summary
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/python_dotenv-1.2.2.dist-info/METADATA    │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.11/site-packages/python_multipart-0.0.29.dist-info/METADA- │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.11/site-packages/python_multipart-0.0.32.dist-info/METADA- │ python-pkg │        0        │    -    │
 │ TA                                                                               │            │                 │         │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/requests-2.34.2.dist-info/METADATA        │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.11/site-packages/s3transfer-0.17.0.dist-info/METADATA      │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.11/site-packages/s3transfer-0.18.0.dist-info/METADATA      │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/setuptools-82.0.1.dist-info/METADATA      │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
@@ -132,9 +132,9 @@ Report Summary
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/six-1.17.0.dist-info/METADATA             │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.11/site-packages/sqlalchemy-2.0.49.dist-info/METADATA      │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.11/site-packages/sqlalchemy-2.0.50.dist-info/METADATA      │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.11/site-packages/starlette-0.52.1.dist-info/METADATA       │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.11/site-packages/starlette-0.52.1.dist-info/METADATA       │ python-pkg │        1        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/typing_extensions-4.15.0.dist-info/METAD- │ python-pkg │        0        │    -    │
 │ ATA                                                                              │            │                 │         │
@@ -146,7 +146,7 @@ Report Summary
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/uuid7-0.1.0.dist-info/METADATA            │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
-│ usr/local/lib/python3.11/site-packages/uvicorn-0.47.0.dist-info/METADATA         │ python-pkg │        0        │    -    │
+│ usr/local/lib/python3.11/site-packages/uvicorn-0.49.0.dist-info/METADATA         │ python-pkg │        0        │    -    │
 ├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
 │ usr/local/lib/python3.11/site-packages/wheel-0.47.0.dist-info/METADATA           │ python-pkg │        0        │    -    │
 └──────────────────────────────────────────────────────────────────────────────────┴────────────┴─────────────────┴─────────┘
@@ -154,3 +154,24 @@ Legend:
 - '-': Not scanned
 - '0': Clean (no security findings detected)
 
+
+For OSS Maintainers: VEX Notice
+--------------------------------
+If you're an OSS maintainer and Trivy has detected vulnerabilities in your project that you believe are not actually exploitable, consider issuing a VEX (Vulnerability Exploitability eXchange) statement.
+VEX allows you to communicate the actual status of vulnerabilities in your project, improving security transparency and reducing false positives for your users.
+Learn more and start using VEX: https://trivy.dev/docs/v0.70/guide/supply-chain/vex/repo#publishing-vex-documents
+
+To disable this notice, set the TRIVY_DISABLE_VEX_NOTICE environment variable.
+
+
+Python (python-pkg)
+===================
+Total: 1 (UNKNOWN: 0, LOW: 0, MEDIUM: 1, HIGH: 0, CRITICAL: 0)
+
+┌──────────────────────┬────────────────┬──────────┬────────┬───────────────────┬───────────────┬───────────────────────────────────────────────────────┐
+│       Library        │ Vulnerability  │ Severity │ Status │ Installed Version │ Fixed Version │                         Title                         │
+├──────────────────────┼────────────────┼──────────┼────────┼───────────────────┼───────────────┼───────────────────────────────────────────────────────┤
+│ starlette (METADATA) │ CVE-2026-48710 │ MEDIUM   │ fixed  │ 0.52.1            │ 1.0.1         │ starlette: Starlette: Security restriction bypass via │
+│                      │                │          │        │                   │               │ malformed HTTP Host header                            │
+│                      │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-48710            │
+└──────────────────────┴────────────────┴──────────┴────────┴───────────────────┴───────────────┴───────────────────────────────────────────────────────┘
